@@ -10,7 +10,7 @@ An Azure Monitor Workbook that answers **"How well is the cloud estate protected
 |---|---|
 | **Executive Summary** | KPI tiles: average Secure Score, total subscriptions, subs with no Defender plan, subs with full coverage. Includes a drill-down table of subscriptions with zero Defender plans. |
 | **Secure Score per Subscription** | Sortable grid and bar chart of Secure Score %, healthy/unhealthy controls, and max points per subscription. |
-| **Protection Gaps** | Resources (VMs, storage accounts, containers, etc.) split into Protected vs Unprotected, with a coverage % heatmap, a per-subscription drill-down of unprotected resources, and a **Stopped** column showing deallocated (powered-off) VMs. Includes detailed list of unprotected server resources. |
+| **Protection Gaps** | Resources (VMs, storage accounts, containers, etc.) split into Protected vs Unprotected, with a coverage % heatmap, a per-subscription drill-down of unprotected resources, and a **Stopped** column showing deallocated (powered-off) VMs. **DCSPM/CSPM is shown as subscription counts** (total subscriptions vs protected/unprotected subscriptions). Includes detailed list of unprotected server resources. |
 | **Plan Status per Subscription** | Matrix of all 14 Defender plans (CSPM, Servers, Containers, App Services, Storage, SQL, Cosmos DB, Key Vault, Resource Manager, APIs, AI, DNS) with On/Off/On(subPlan) icons per subscription. |
 | **Extensions & Features** | Per-plan extension tables showing which optional capabilities are enabled: CSPM (7 extensions), Servers (6), Containers (5), Storage (2), AI (3). |
 
