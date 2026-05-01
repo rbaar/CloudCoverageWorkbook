@@ -518,10 +518,10 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId)\n| where planName in~ (\"VirtualMachines\", \"AppServices\", \"StorageAccounts\", \"Containers\", \"KeyVaults\", \"AI\", \"Api\")\n| where pricingTier == \"Free\"\n| project subId, planName\n| join kind=inner (\n    resources\n    | extend planCategory = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"VirtualMachines\",\n        type =~ \"microsoft.web/sites\", \"AppServices\",\n        type =~ \"microsoft.storage/storageaccounts\", \"StorageAccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"Containers\",\n        type =~ \"microsoft.keyvault/vaults\", \"KeyVaults\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"AI\",\n        type =~ \"microsoft.apimanagement/service\", \"Api\",\n        \"\"\n    )\n    | where planCategory != \"\"\n    | summarize ResourceCount = count() by subscriptionId, planCategory\n) on $left.subId == $right.subscriptionId and $left.planName == $right.planCategory\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on $left.subId == $right.subscriptionId\n| extend SubscriptionName = coalesce(subscriptionName, subId)\n| extend DisplayName = case(\n    planName == \"VirtualMachines\", \"Servers\",\n    planName == \"AppServices\", \"App Services\",\n    planName == \"StorageAccounts\", \"Storage Accounts\",\n    planName == \"Containers\", \"Containers\",\n    planName == \"KeyVaults\", \"Key Vault\",\n    planName == \"AI\", \"AI Services\",\n    planName == \"Api\", \"API Management\",\n    planName\n)\n| project SubscriptionName, DisplayName, ResourceCount\n| order by ResourceCount desc",
+              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId)\n| where planName =~ \"VirtualMachines\"\n| where pricingTier == \"Free\"\n| project subId\n| join kind=inner (\n    resources\n    | where type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\")\n    | extend vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | where type !~ \"microsoft.compute/virtualmachines\" or tolower(vmPowerState) !contains \"deallocated\"\n    | project subscriptionId, resourceId = id, resourceName = name, resourceType = type, resourceGroup, location, powerState = vmPowerState\n) on $left.subId == $right.subscriptionId\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on $left.subId == $right.subscriptionId\n| extend SubscriptionName = coalesce(subscriptionName, subId)\n| extend ResourceKind = case(\n    resourceType =~ \"microsoft.compute/virtualmachines\", \"Azure VM\",\n    resourceType =~ \"microsoft.hybridcompute/machines\", \"Arc Machine\",\n    resourceType\n)\n| extend PowerState = iff(ResourceKind == \"Arc Machine\", \"N/A\", iff(isempty(powerState), \"Unknown\", powerState))\n| project SubscriptionName, ResourceKind, resourceName, resourceGroup, location, PowerState, resourceId\n| order by SubscriptionName asc, ResourceKind asc, resourceName asc",
               "size": 0,
               "showExportToExcel": true,
-              "title": "Unprotected resources — per subscription",
+              "title": "Unprotected servers (VMs & Arc) — resource list",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
               "crossComponentResources": [
@@ -531,24 +531,19 @@
               "gridSettings": {
                 "formatters": [
                   {
-                    "columnMatch": "ResourceCount",
-                    "formatter": 8,
-                    "formatOptions": {
-                      "palette": "red"
-                    },
-                    "numberFormat": {
-                      "unit": 0,
-                      "options": {
-                        "style": "decimal"
-                      }
-                    }
+                    "columnMatch": "resourceId",
+                    "formatter": 1
                   }
                 ],
                 "filter": true,
                 "labelSettings": [
                   { "columnId": "SubscriptionName", "label": "Subscription" },
-                  { "columnId": "DisplayName", "label": "Resource Type" },
-                  { "columnId": "ResourceCount", "label": "Unprotected Resources" }
+                  { "columnId": "ResourceKind", "label": "Resource Type" },
+                  { "columnId": "resourceName", "label": "Resource Name" },
+                  { "columnId": "resourceGroup", "label": "Resource Group" },
+                  { "columnId": "location", "label": "Location" },
+                  { "columnId": "PowerState", "label": "Power State" },
+                  { "columnId": "resourceId", "label": "Resource ID" }
                 ]
               }
             },
