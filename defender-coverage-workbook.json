@@ -410,7 +410,7 @@
           {
             "type": 1,
             "content": {
-              "json": "## Where are the gaps?\n\nThis table shows the actual number of resources per Defender plan — split into what's protected and what's not.\n\nIf the **Unprotected** column shows a number above zero, those resources have no Defender coverage. They won't generate security alerts, vulnerability findings, or threat detections.\n\n**How to read this:**\n- **Total** = all resources of this type in your selected subscriptions\n- **Protected** = resources in subscriptions where the plan is turned on\n- **Unprotected** = resources in subscriptions where the plan is turned off — your blind spots\n- **Stopped** = Azure VMs that are deallocated/stopped (included in Total; shown separately for context)\n- **Coverage %** = Protected / Total"
+              "json": "## Where are the gaps?\n\nThis table shows the actual number of resources per Defender plan — split into what's protected and what's not.\n\nIf the **Unprotected** column shows a number above zero, those resources have no Defender coverage. They won't generate security alerts, vulnerability findings, or threat detections.\n\n**How to read this:**\n- **Total** = all resources of this type in your selected subscriptions\n- **Protected** = resources in subscriptions where the plan is turned on\n- **Unprotected** = resources in subscriptions where the plan is turned off — your blind spots\n- **Stopped** = Azure VMs that are deallocated (NOT currently allocated/powered-off; included in Total; shown separately for context)\n- **Coverage %** = Protected / Total"
             },
             "name": "gap-header"
           },
@@ -569,7 +569,7 @@
           {
             "type": 1,
             "content": {
-              "json": "---\n### Which subscriptions have unprotected resources?\n\nThe table below only shows subscriptions where resources exist but the corresponding Defender plan is not enabled. Sorted by the largest gap first — so you can prioritize what to address.\n\nThe **Stopped** column shows how many of those unprotected resources are deallocated Azure VMs."
+              "json": "---\n### Which subscriptions have unprotected resources?\n\nThe table below only shows subscriptions where resources exist but the corresponding Defender plan is not enabled. Sorted by the largest gap first — so you can prioritize what to address.\n\nThe **Stopped** column shows how many of those unprotected resources are deallocated (powered-off/not currently running) Azure VMs."
             },
             "name": "drill-header"
           },
@@ -639,7 +639,7 @@
           {
             "type": 1,
             "content": {
-              "json": "---\n### Unprotected servers — detailed list\n\nThis list shows each unprotected server resource (Azure VM and Arc machine) in subscriptions where Defender for Servers is Free. The **Power State** column shows whether each VM is running or deallocated/stopped."
+              "json": "---\n### Unprotected servers — detailed list\n\nThis list shows each unprotected server resource (Azure VM and Arc machine) in subscriptions where Defender for Servers is Free. The **Power State** column shows whether each VM is running or deallocated (powered-off — not currently allocated to compute resources)."
             },
             "name": "drill-servers-header"
           },
