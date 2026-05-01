@@ -1,6 +1,5 @@
 {
   "version": "Notebook/1.0",
-  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json",
   "items": [
     {
       "type": 1,
@@ -158,7 +157,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| summarize Cnt = dcount(subscriptionId)\n| project Metric = \"Total subscriptions in scope\", Value = tostring(Cnt)",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| summarize Cnt = dcount(subId)\n| project Metric = \"Total subscriptions in scope\", Value = tostring(Cnt)",
               "size": 4,
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
@@ -189,7 +188,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend tier = tostring(properties.pricingTier)\n| summarize StandardPlans = countif(tier == \"Standard\") by subscriptionId\n| summarize Cnt = countif(StandardPlans == 0)\n| project Metric = \"Subs with NO Defender plan\", Value = tostring(Cnt)",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| summarize StandardPlans = countif(pricingTier == \"Standard\") by subId\n| summarize Cnt = countif(StandardPlans == 0)\n| project Metric = \"Subs with NO Defender plan\", Value = tostring(Cnt)",
               "size": 4,
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
@@ -220,7 +219,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend tier = tostring(properties.pricingTier)\n| summarize StandardPlans = countif(tier == \"Standard\"), TotalPlans = count() by subscriptionId\n| summarize Cnt = countif(TotalPlans > 0 and StandardPlans == TotalPlans)\n| project Metric = \"Subs with full Defender coverage\", Value = tostring(Cnt)",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where planName in~ (\"CloudPosture\", \"VirtualMachines\", \"AppServices\", \"SqlServers\", \"OpenSourceRelationalDatabases\", \"CosmosDbs\", \"StorageAccounts\", \"Containers\", \"KeyVaults\", \"Arm\", \"Api\", \"AI\", \"SqlServerVirtualMachines\", \"Dns\")\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| summarize StandardPlans = countif(pricingTier == \"Standard\"), TotalPlans = 14 by subId\n| summarize Cnt = countif(StandardPlans == 14)\n| project Metric = \"Subs with full Defender coverage\", Value = tostring(Cnt)",
               "size": 4,
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
@@ -344,9 +343,18 @@
                 ],
                 "filter": true,
                 "labelSettings": [
-                  { "columnId": "ScorePct", "label": "Score %" },
-                  { "columnId": "MaxPoints", "label": "Max points" },
-                  { "columnId": "NotApplicable", "label": "Not applicable" }
+                  {
+                    "columnId": "ScorePct",
+                    "label": "Score %"
+                  },
+                  {
+                    "columnId": "MaxPoints",
+                    "label": "Max points"
+                  },
+                  {
+                    "columnId": "NotApplicable",
+                    "label": "Not applicable"
+                  }
                 ]
               }
             },
@@ -367,9 +375,14 @@
               "visualization": "barchart",
               "chartSettings": {
                 "xAxis": "Subscription",
-                "yAxis": ["ScorePct"],
+                "yAxis": [
+                  "ScorePct"
+                ],
                 "seriesLabelSettings": [
-                  { "seriesName": "ScorePct", "color": "blue" }
+                  {
+                    "seriesName": "ScorePct",
+                    "color": "blue"
+                  }
                 ],
                 "ySettings": {
                   "min": 0,
@@ -397,7 +410,7 @@
           {
             "type": 1,
             "content": {
-              "json": "## Where are the gaps?\n\nThis table shows the actual number of resources per Defender plan — split into what's protected and what's not.\n\nIf the **Unprotected** column shows a number above zero, those resources have no Defender coverage. They won't generate security alerts, vulnerability findings, or threat detections.\n\n**How to read this:**\n- **Total** = all resources of this type in your selected subscriptions\n- **Protected** = resources in subscriptions where the plan is turned on\n- **Unprotected** = resources in subscriptions where the plan is turned off — your blind spots\n- **Coverage %** = Protected / Total (excluding Subscriptions/DCSPM where there's no underlying resource count)"
+              "json": "## Where are the gaps?\n\nThis table shows the actual number of resources per Defender plan — split into what's protected and what's not.\n\nIf the **Unprotected** column shows a number above zero, those resources have no Defender coverage. They won't generate security alerts, vulnerability findings, or threat detections.\n\n**How to read this:**\n- **Total** = all resources of this type in your selected subscriptions\n- **Protected** = resources in subscriptions where the plan is turned on\n- **Unprotected** = resources in subscriptions where the plan is turned off — your blind spots\n- **Coverage %** = Protected / Total (excluding Subscriptions/DCSPM where there's no underlying resource count)\n\nNote: deallocated Azure VMs are excluded from counts."
             },
             "name": "gap-header"
           },
@@ -405,7 +418,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId)\n| where planName in~ (\"CloudPosture\", \"VirtualMachines\", \"AppServices\", \"SqlServers\", \"OpenSourceRelationalDatabases\", \"CosmosDbs\", \"StorageAccounts\", \"Containers\", \"AI\", \"KeyVaults\", \"Arm\", \"Api\")\n| project subId, planName, pricingTier\n| join kind=leftouter (\n    resources\n    | extend planCategory = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"VirtualMachines\",\n        type =~ \"microsoft.web/sites\", \"AppServices\",\n        type in~ (\"microsoft.sql/servers\", \"microsoft.sql/managedinstances\", \"microsoft.dbforpostgresql/flexibleservers\", \"microsoft.dbformysql/flexibleservers\", \"microsoft.dbformariadb/servers\"), \"SqlServers\",\n        type =~ \"microsoft.documentdb/databaseaccounts\", \"CosmosDbs\",\n        type =~ \"microsoft.storage/storageaccounts\", \"StorageAccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"Containers\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"AI\",\n        type =~ \"microsoft.keyvault/vaults\", \"KeyVaults\",\n        type =~ \"microsoft.apimanagement/service\", \"Api\",\n        \"\"\n    )\n    | where planCategory != \"\"\n    | summarize ResourceCount = count() by subscriptionId, planCategory\n) on $left.subId == $right.subscriptionId and $left.planName == $right.planCategory\n| extend ResourceCount = coalesce(ResourceCount, tolong(0))\n| summarize\n    TotalResources = sum(ResourceCount),\n    Protected = sumif(ResourceCount, pricingTier == \"Standard\"),\n    Unprotected = sumif(ResourceCount, pricingTier == \"Free\")\n    by planName\n| extend DisplayName = case(\n    planName =~ \"CloudPosture\", \"DCSPM (Subscriptions)\",\n    planName =~ \"VirtualMachines\", \"Servers (VMs & Arc)\",\n    planName =~ \"AppServices\", \"App Services\",\n    planName =~ \"SqlServers\", \"Databases (SQL & OSS)\",\n    planName =~ \"OpenSourceRelationalDatabases\", \"Databases (SQL & OSS)\",\n    planName =~ \"CosmosDbs\", \"Cosmos DB\",\n    planName =~ \"StorageAccounts\", \"Storage Accounts\",\n    planName =~ \"Containers\", \"Containers (AKS & ACR)\",\n    planName =~ \"AI\", \"AI Services\",\n    planName =~ \"KeyVaults\", \"Key Vault\",\n    planName =~ \"Arm\", \"Resource Manager\",\n    planName =~ \"Api\", \"API Management\",\n    planName\n)\n| summarize\n    TotalResources = sum(TotalResources),\n    Protected = sum(Protected),\n    Unprotected = sum(Unprotected)\n    by DisplayName\n| extend CoveragePct = iff(TotalResources > 0, round(todouble(Protected) / todouble(TotalResources) * 100, 0), todouble(-1))\n| order by Unprotected desc",
+              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId),\n         pricingId = tolower(tostring(id))\n| where planName in~ (\"CloudPosture\", \"VirtualMachines\", \"AppServices\", \"SqlServers\", \"OpenSourceRelationalDatabases\", \"CosmosDbs\", \"StorageAccounts\", \"Containers\", \"AI\", \"KeyVaults\", \"Arm\", \"Api\")\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| project subId, planName, pricingTier\n| join kind=leftouter (\n    resources\n    | extend vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | where type !~ \"microsoft.compute/virtualmachines\" or tolower(vmPowerState) !contains \"deallocated\"\n    | extend planCategory = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"VirtualMachines\",\n        type =~ \"microsoft.web/sites\", \"AppServices\",\n        type in~ (\"microsoft.sql/servers\", \"microsoft.sql/managedinstances\", \"microsoft.dbforpostgresql/flexibleservers\", \"microsoft.dbformysql/flexibleservers\", \"microsoft.dbformariadb/servers\"), \"SqlServers\",\n        type =~ \"microsoft.documentdb/databaseaccounts\", \"CosmosDbs\",\n        type =~ \"microsoft.storage/storageaccounts\", \"StorageAccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"Containers\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"AI\",\n        type =~ \"microsoft.keyvault/vaults\", \"KeyVaults\",\n        type =~ \"microsoft.apimanagement/service\", \"Api\",\n        \"\"\n    )\n    | where planCategory != \"\"\n    | summarize ResourceCount = count() by subscriptionId, planCategory\n) on $left.subId == $right.subscriptionId and $left.planName == $right.planCategory\n| extend ResourceCount = coalesce(ResourceCount, tolong(0))\n| summarize\n    TotalResources = sum(ResourceCount),\n    Protected = sumif(ResourceCount, pricingTier == \"Standard\"),\n    Unprotected = sumif(ResourceCount, pricingTier == \"Free\")\n    by planName\n| extend DisplayName = case(\n    planName =~ \"CloudPosture\", \"DCSPM (Subscriptions)\",\n    planName =~ \"VirtualMachines\", \"Servers (VMs & Arc)\",\n    planName =~ \"AppServices\", \"App Services\",\n    planName =~ \"SqlServers\", \"Databases (SQL & OSS)\",\n    planName =~ \"OpenSourceRelationalDatabases\", \"Databases (SQL & OSS)\",\n    planName =~ \"CosmosDbs\", \"Cosmos DB\",\n    planName =~ \"StorageAccounts\", \"Storage Accounts\",\n    planName =~ \"Containers\", \"Containers (AKS & ACR)\",\n    planName =~ \"AI\", \"AI Services\",\n    planName =~ \"KeyVaults\", \"Key Vault\",\n    planName =~ \"Arm\", \"Resource Manager\",\n    planName =~ \"Api\", \"API Management\",\n    planName\n)\n| summarize\n    TotalResources = sum(TotalResources),\n    Protected = sum(Protected),\n    Unprotected = sum(Unprotected)\n    by DisplayName\n| extend CoveragePct = iff(TotalResources > 0, round(todouble(Protected) / todouble(TotalResources) * 100, 0), todouble(-1))\n| order by Unprotected desc",
               "size": 0,
               "showAnalytics": true,
               "showExportToExcel": true,
@@ -473,11 +486,26 @@
                 ],
                 "filter": true,
                 "labelSettings": [
-                  { "columnId": "DisplayName", "label": "Resource Type" },
-                  { "columnId": "TotalResources", "label": "Total" },
-                  { "columnId": "Protected", "label": "Protected" },
-                  { "columnId": "Unprotected", "label": "Unprotected" },
-                  { "columnId": "CoveragePct", "label": "Coverage %" }
+                  {
+                    "columnId": "DisplayName",
+                    "label": "Resource Type"
+                  },
+                  {
+                    "columnId": "TotalResources",
+                    "label": "Total"
+                  },
+                  {
+                    "columnId": "Protected",
+                    "label": "Protected"
+                  },
+                  {
+                    "columnId": "Unprotected",
+                    "label": "Unprotected"
+                  },
+                  {
+                    "columnId": "CoveragePct",
+                    "label": "Coverage %"
+                  }
                 ]
               }
             },
@@ -487,7 +515,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId)\n| where planName in~ (\"VirtualMachines\", \"AppServices\", \"SqlServers\", \"CosmosDbs\", \"StorageAccounts\", \"Containers\", \"AI\", \"KeyVaults\", \"Api\")\n| project subId, planName, pricingTier\n| join kind=leftouter (\n    resources\n    | extend planCategory = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"VirtualMachines\",\n        type =~ \"microsoft.web/sites\", \"AppServices\",\n        type in~ (\"microsoft.sql/servers\", \"microsoft.sql/managedinstances\", \"microsoft.dbforpostgresql/flexibleservers\", \"microsoft.dbformysql/flexibleservers\", \"microsoft.dbformariadb/servers\"), \"SqlServers\",\n        type =~ \"microsoft.documentdb/databaseaccounts\", \"CosmosDbs\",\n        type =~ \"microsoft.storage/storageaccounts\", \"StorageAccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"Containers\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"AI\",\n        type =~ \"microsoft.keyvault/vaults\", \"KeyVaults\",\n        type =~ \"microsoft.apimanagement/service\", \"Api\",\n        \"\"\n    )\n    | where planCategory != \"\"\n    | summarize ResourceCount = count() by subscriptionId, planCategory\n) on $left.subId == $right.subscriptionId and $left.planName == $right.planCategory\n| extend ResourceCount = coalesce(ResourceCount, tolong(0))\n| summarize\n    Protected = sumif(ResourceCount, pricingTier == \"Standard\"),\n    Unprotected = sumif(ResourceCount, pricingTier == \"Free\")\n    by planName\n| extend DisplayName = case(\n    planName =~ \"VirtualMachines\", \"Servers\",\n    planName =~ \"AppServices\", \"App Svc\",\n    planName =~ \"SqlServers\", \"Databases\",\n    planName =~ \"CosmosDbs\", \"Cosmos\",\n    planName =~ \"StorageAccounts\", \"Storage\",\n    planName =~ \"Containers\", \"Containers\",\n    planName =~ \"AI\", \"AI\",\n    planName =~ \"KeyVaults\", \"Key Vault\",\n    planName =~ \"Api\", \"APIM\",\n    planName\n)\n| project DisplayName, Protected, Unprotected",
+              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId),\n         pricingId = tolower(tostring(id))\n| where planName in~ (\"VirtualMachines\", \"AppServices\", \"SqlServers\", \"CosmosDbs\", \"StorageAccounts\", \"Containers\", \"AI\", \"KeyVaults\", \"Api\")\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| project subId, planName, pricingTier\n| join kind=leftouter (\n    resources\n    | extend vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | where type !~ \"microsoft.compute/virtualmachines\" or tolower(vmPowerState) !contains \"deallocated\"\n    | extend planCategory = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"VirtualMachines\",\n        type =~ \"microsoft.web/sites\", \"AppServices\",\n        type in~ (\"microsoft.sql/servers\", \"microsoft.sql/managedinstances\", \"microsoft.dbforpostgresql/flexibleservers\", \"microsoft.dbformysql/flexibleservers\", \"microsoft.dbformariadb/servers\"), \"SqlServers\",\n        type =~ \"microsoft.documentdb/databaseaccounts\", \"CosmosDbs\",\n        type =~ \"microsoft.storage/storageaccounts\", \"StorageAccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"Containers\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"AI\",\n        type =~ \"microsoft.keyvault/vaults\", \"KeyVaults\",\n        type =~ \"microsoft.apimanagement/service\", \"Api\",\n        \"\"\n    )\n    | where planCategory != \"\"\n    | summarize ResourceCount = count() by subscriptionId, planCategory\n) on $left.subId == $right.subscriptionId and $left.planName == $right.planCategory\n| extend ResourceCount = coalesce(ResourceCount, tolong(0))\n| summarize\n    Protected = sumif(ResourceCount, pricingTier == \"Standard\"),\n    Unprotected = sumif(ResourceCount, pricingTier == \"Free\")\n    by planName\n| extend DisplayName = case(\n    planName =~ \"VirtualMachines\", \"Servers\",\n    planName =~ \"AppServices\", \"App Svc\",\n    planName =~ \"SqlServers\", \"Databases\",\n    planName =~ \"CosmosDbs\", \"Cosmos\",\n    planName =~ \"StorageAccounts\", \"Storage\",\n    planName =~ \"Containers\", \"Containers\",\n    planName =~ \"AI\", \"AI\",\n    planName =~ \"KeyVaults\", \"Key Vault\",\n    planName =~ \"Api\", \"APIM\",\n    planName\n)\n| project DisplayName, Protected, Unprotected",
               "size": 0,
               "title": "At a glance: green = covered, red = exposed",
               "queryType": 1,
@@ -498,10 +526,19 @@
               "visualization": "barchart",
               "chartSettings": {
                 "xAxis": "DisplayName",
-                "yAxis": ["Protected", "Unprotected"],
+                "yAxis": [
+                  "Protected",
+                  "Unprotected"
+                ],
                 "seriesLabelSettings": [
-                  { "seriesName": "Protected", "color": "green" },
-                  { "seriesName": "Unprotected", "color": "redBright" }
+                  {
+                    "seriesName": "Protected",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "Unprotected",
+                    "color": "redBright"
+                  }
                 ]
               }
             },
@@ -510,7 +547,7 @@
           {
             "type": 1,
             "content": {
-              "json": "---\n### Which subscriptions have unprotected resources?\n\nThe table below only shows subscriptions where resources exist but the corresponding Defender plan is not enabled. Sorted by the largest gap first — so you can prioritize what to address."
+              "json": "---\n### Which subscriptions have unprotected resources?\n\nThe table below only shows subscriptions where resources exist but the corresponding Defender plan is not enabled. Sorted by the largest gap first — so you can prioritize what to address.\n\nNote: deallocated Azure VMs are excluded."
             },
             "name": "drill-header"
           },
@@ -518,10 +555,66 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId)\n| where planName =~ \"VirtualMachines\"\n| where pricingTier == \"Free\"\n| project subId\n| join kind=inner (\n    resources\n    | where type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\")\n    | extend vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | where type !~ \"microsoft.compute/virtualmachines\" or tolower(vmPowerState) !contains \"deallocated\"\n    | project subscriptionId, resourceId = id, resourceName = name, resourceType = type, resourceGroup, location, powerState = vmPowerState\n) on $left.subId == $right.subscriptionId\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on $left.subId == $right.subscriptionId\n| extend SubscriptionName = coalesce(subscriptionName, subId)\n| extend ResourceKind = case(\n    resourceType =~ \"microsoft.compute/virtualmachines\", \"Azure VM\",\n    resourceType =~ \"microsoft.hybridcompute/machines\", \"Arc Machine\",\n    resourceType\n)\n| extend PowerState = iff(ResourceKind == \"Arc Machine\", \"N/A\", iff(isempty(powerState), \"Unknown\", powerState))\n| project SubscriptionName, ResourceKind, resourceName, resourceGroup, location, PowerState, resourceId\n| order by SubscriptionName asc, ResourceKind asc, resourceName asc",
+              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId),\n         pricingId = tolower(tostring(id))\n| where planName in~ (\"VirtualMachines\", \"AppServices\", \"StorageAccounts\", \"Containers\", \"KeyVaults\", \"AI\", \"Api\")\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| where pricingTier == \"Free\"\n| project subId, planName\n| join kind=inner (\n    resources\n    | extend vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | where type !~ \"microsoft.compute/virtualmachines\" or tolower(vmPowerState) !contains \"deallocated\"\n    | extend planCategory = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"VirtualMachines\",\n        type =~ \"microsoft.web/sites\", \"AppServices\",\n        type =~ \"microsoft.storage/storageaccounts\", \"StorageAccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"Containers\",\n        type =~ \"microsoft.keyvault/vaults\", \"KeyVaults\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"AI\",\n        type =~ \"microsoft.apimanagement/service\", \"Api\",\n        \"\"\n    )\n    | where planCategory != \"\"\n    | summarize ResourceCount = count() by subscriptionId, planCategory\n) on $left.subId == $right.subscriptionId and $left.planName == $right.planCategory\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on $left.subId == $right.subscriptionId\n| extend SubscriptionName = coalesce(subscriptionName, subId)\n| extend DisplayName = case(\n    planName == \"VirtualMachines\", \"Servers\",\n    planName == \"AppServices\", \"App Services\",\n    planName == \"StorageAccounts\", \"Storage Accounts\",\n    planName == \"Containers\", \"Containers\",\n    planName == \"KeyVaults\", \"Key Vault\",\n    planName == \"AI\", \"AI Services\",\n    planName == \"Api\", \"API Management\",\n    planName\n)\n| project SubscriptionName, DisplayName, ResourceCount\n| order by ResourceCount desc",
               "size": 0,
               "showExportToExcel": true,
-              "title": "Unprotected servers (VMs & Arc) — resource list",
+              "title": "Unprotected resources — per subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "ResourceCount",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "red"
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "SubscriptionName",
+                    "label": "Subscription"
+                  },
+                  {
+                    "columnId": "DisplayName",
+                    "label": "Resource Type"
+                  },
+                  {
+                    "columnId": "ResourceCount",
+                    "label": "Unprotected Resources"
+                  }
+                ]
+              }
+            },
+            "name": "drill-table"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "---\n### Unprotected servers — detailed list\n\nThis list shows each unprotected server resource (Azure VM and Arc machine) in subscriptions where Defender for Servers is Free. Deallocated Azure VMs are excluded."
+            },
+            "name": "drill-servers-header"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId),\n         pricingId = tolower(tostring(id))\n| where planName =~ \"VirtualMachines\"\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| where pricingTier == \"Free\"\n| project subId\n| join kind=inner (\n    resources\n    | where type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\")\n    | extend vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | where type !~ \"microsoft.compute/virtualmachines\" or tolower(vmPowerState) !contains \"deallocated\"\n    | project subscriptionId, resourceId = id, resourceName = name, resourceType = type, resourceGroup, location, powerState = vmPowerState\n) on $left.subId == $right.subscriptionId\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on $left.subId == $right.subscriptionId\n| extend SubscriptionName = coalesce(subscriptionName, subId)\n| extend ResourceKind = case(\n    resourceType =~ \"microsoft.compute/virtualmachines\", \"Azure VM\",\n    resourceType =~ \"microsoft.hybridcompute/machines\", \"Arc Machine\",\n    resourceType\n)\n| extend PowerState = iff(ResourceKind == \"Arc Machine\", \"N/A\", iff(isempty(powerState), \"Unknown\", powerState))\n| project SubscriptionName, ResourceKind, resourceName, resourceGroup, location, PowerState, resourceId\n| order by SubscriptionName asc, ResourceKind asc, resourceName asc",
+              "size": 0,
+              "showExportToExcel": true,
+              "title": "Unprotected servers — resource list",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
               "crossComponentResources": [
@@ -537,17 +630,38 @@
                 ],
                 "filter": true,
                 "labelSettings": [
-                  { "columnId": "SubscriptionName", "label": "Subscription" },
-                  { "columnId": "ResourceKind", "label": "Resource Type" },
-                  { "columnId": "resourceName", "label": "Resource Name" },
-                  { "columnId": "resourceGroup", "label": "Resource Group" },
-                  { "columnId": "location", "label": "Location" },
-                  { "columnId": "PowerState", "label": "Power State" },
-                  { "columnId": "resourceId", "label": "Resource ID" }
+                  {
+                    "columnId": "SubscriptionName",
+                    "label": "Subscription"
+                  },
+                  {
+                    "columnId": "ResourceKind",
+                    "label": "Resource Type"
+                  },
+                  {
+                    "columnId": "resourceName",
+                    "label": "Resource Name"
+                  },
+                  {
+                    "columnId": "resourceGroup",
+                    "label": "Resource Group"
+                  },
+                  {
+                    "columnId": "location",
+                    "label": "Location"
+                  },
+                  {
+                    "columnId": "PowerState",
+                    "label": "Power State"
+                  },
+                  {
+                    "columnId": "resourceId",
+                    "label": "Resource ID"
+                  }
                 ]
               }
             },
-            "name": "drill-table"
+            "name": "drill-servers-table"
           }
         ]
       },
@@ -575,7 +689,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend pricingTier = tostring(properties.pricingTier), subPlan = tostring(properties.subPlan)\n| extend planSet = pack(tostring(name), case(pricingTier =~ \"Free\", \"Off\", isnotempty(subPlan), strcat(\"On (\", subPlan, \")\"), \"On\"))\n| summarize defenderPlans = make_bag(planSet) by subscriptionId\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend SubscriptionName = coalesce(subscriptionName, subscriptionId)\n| project SubscriptionName,\n    CSPM = tostring(defenderPlans.CloudPosture),\n    Servers = tostring(defenderPlans.VirtualMachines),\n    Containers = tostring(defenderPlans.Containers),\n    AppServices = tostring(defenderPlans.AppServices),\n    Storage = tostring(defenderPlans.StorageAccounts),\n    SQL = tostring(defenderPlans.SqlServers),\n    SQL_on_VMs = tostring(defenderPlans.SqlServerVirtualMachines),\n    OSS_Databases = tostring(defenderPlans.OpenSourceRelationalDatabases),\n    CosmosDB = tostring(defenderPlans.CosmosDbs),\n    KeyVault = tostring(defenderPlans.KeyVaults),\n    ResourceManager = tostring(defenderPlans.Arm),\n    APIs = tostring(defenderPlans.Api),\n    AI = tostring(defenderPlans.AI),\n    DNS = tostring(defenderPlans.Dns)\n| order by SubscriptionName asc",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier), subPlan = tostring(properties.subPlan)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| extend planSet = pack(planName, case(pricingTier =~ \"Free\", \"Off\", isnotempty(subPlan), strcat(\"On (\", subPlan, \")\"), \"On\"))\n| summarize defenderPlans = make_bag(planSet) by subscriptionId\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend SubscriptionName = coalesce(subscriptionName, subscriptionId)\n| project SubscriptionName,\n    CSPM = tostring(defenderPlans.CloudPosture),\n    Servers = tostring(defenderPlans.VirtualMachines),\n    Containers = tostring(defenderPlans.Containers),\n    AppServices = tostring(defenderPlans.AppServices),\n    Storage = tostring(defenderPlans.StorageAccounts),\n    SQL = tostring(defenderPlans.SqlServers),\n    SQL_on_VMs = tostring(defenderPlans.SqlServerVirtualMachines),\n    OSS_Databases = tostring(defenderPlans.OpenSourceRelationalDatabases),\n    CosmosDB = tostring(defenderPlans.CosmosDbs),\n    KeyVault = tostring(defenderPlans.KeyVaults),\n    ResourceManager = tostring(defenderPlans.Arm),\n    APIs = tostring(defenderPlans.Api),\n    AI = tostring(defenderPlans.AI),\n    DNS = tostring(defenderPlans.Dns)\n| order by SubscriptionName asc",
               "size": 0,
               "showAnalytics": true,
               "showExportToExcel": true,
@@ -593,8 +707,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -604,8 +727,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -615,8 +747,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -626,8 +767,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -637,8 +787,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -648,8 +807,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -659,8 +827,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -670,8 +847,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -681,8 +867,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -692,8 +887,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -703,8 +907,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -714,8 +927,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -725,8 +947,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -736,8 +967,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "On", "representation": "warning", "text": "{0} (deprecated)" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "On",
+                          "representation": "warning",
+                          "text": "{0} (deprecated)"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   }
@@ -780,7 +1020,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"CloudPosture\"\n| extend pricingTier = tostring(properties.pricingTier)\n| mv-expand ext = properties.extensions\n| extend extSet = pack(tostring(ext.name), tostring(ext.isEnabled))\n| summarize extensions = make_bag(extSet) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    AgentlessVmScanning = tostring(extensions.AgentlessVmScanning),\n    AgentlessK8sDiscovery = tostring(extensions.AgentlessDiscoveryForKubernetes),\n    ContainerRegistryVA = tostring(extensions.ContainerRegistriesVulnerabilityAssessments),\n    SensitiveDataDiscovery = tostring(extensions.SensitiveDataDiscovery),\n    EntraPermissions = tostring(extensions.EntraPermissionsManagement),\n    ApiSecurityPosture = tostring(extensions.ApiSecurityPostureManagement),\n    ServerlessProtection = tostring(extensions.ServerlessProtection)\n| order by Subscription asc",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"CloudPosture\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| mv-expand ext = properties.extensions\n| extend extSet = pack(tostring(ext.name), tostring(ext.isEnabled))\n| summarize extensions = make_bag(extSet) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    AgentlessVmScanning = tostring(extensions.AgentlessVmScanning),\n    AgentlessK8sDiscovery = tostring(extensions.AgentlessDiscoveryForKubernetes),\n    ContainerRegistryVA = tostring(extensions.ContainerRegistriesVulnerabilityAssessments),\n    SensitiveDataDiscovery = tostring(extensions.SensitiveDataDiscovery),\n    EntraPermissions = tostring(extensions.EntraPermissionsManagement),\n    ApiSecurityPosture = tostring(extensions.ApiSecurityPostureManagement),\n    ServerlessProtection = tostring(extensions.ServerlessProtection)\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
               "title": "Defender CSPM extensions",
@@ -797,8 +1037,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "Standard", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -808,8 +1057,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -819,8 +1077,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -830,8 +1097,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -841,8 +1117,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -852,8 +1137,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -863,8 +1157,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -874,21 +1177,51 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   }
                 ],
                 "filter": true,
                 "labelSettings": [
-                  { "columnId": "AgentlessVmScanning", "label": "Agentless scanning for machines" },
-                  { "columnId": "AgentlessK8sDiscovery", "label": "Kubernetes API access" },
-                  { "columnId": "ContainerRegistryVA", "label": "Registry access" },
-                  { "columnId": "SensitiveDataDiscovery", "label": "Sensitive data threat detection" },
-                  { "columnId": "EntraPermissions", "label": "CIEM" },
-                  { "columnId": "ApiSecurityPosture", "label": "API Security Posture Management" },
-                  { "columnId": "ServerlessProtection", "label": "Serverless protection" }
+                  {
+                    "columnId": "AgentlessVmScanning",
+                    "label": "Agentless scanning for machines"
+                  },
+                  {
+                    "columnId": "AgentlessK8sDiscovery",
+                    "label": "Kubernetes API access"
+                  },
+                  {
+                    "columnId": "ContainerRegistryVA",
+                    "label": "Registry access"
+                  },
+                  {
+                    "columnId": "SensitiveDataDiscovery",
+                    "label": "Sensitive data threat detection"
+                  },
+                  {
+                    "columnId": "EntraPermissions",
+                    "label": "CIEM"
+                  },
+                  {
+                    "columnId": "ApiSecurityPosture",
+                    "label": "API Security Posture Management"
+                  },
+                  {
+                    "columnId": "ServerlessProtection",
+                    "label": "Serverless protection"
+                  }
                 ]
               }
             },
@@ -905,7 +1238,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"VirtualMachines\"\n| extend pricingTier = tostring(properties.pricingTier),\n         subPlan = tostring(properties.subPlan)\n| mv-expand ext = properties.extensions\n| extend extSet = pack(tostring(ext.name), tostring(ext.isEnabled))\n| summarize extensions = make_bag(extSet) by subscriptionId, pricingTier, subPlan\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| extend Tier = case(isnotempty(subPlan), strcat(pricingTier, \" (\", subPlan, \")\"), pricingTier)\n| project Subscription,\n    Tier,\n    LogAnalyticsAgent = tostring(extensions.MmaAgent),\n    VulnerabilityAssessment = tostring(extensions.MdeVulnerabilityAssessment),\n    GuestConfiguration = tostring(extensions.GuestConfiguration),\n    EndpointProtection = tostring(extensions.MdeDesignatedSubscription),\n    AgentlessVmScanning = tostring(extensions.AgentlessVmScanning),\n    FileIntegrityMonitoring = tostring(extensions.FileIntegrityMonitoring)\n| order by Subscription asc",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"VirtualMachines\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier), subPlan = tostring(properties.subPlan)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| mv-expand ext = properties.extensions\n| extend extSet = pack(tostring(ext.name), tostring(ext.isEnabled))\n| summarize extensions = make_bag(extSet) by subscriptionId, pricingTier, subPlan\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| extend Tier = case(isnotempty(subPlan), strcat(pricingTier, \" (\", subPlan, \")\"), pricingTier)\n| project Subscription,\n    Tier,\n    LogAnalyticsAgent = tostring(extensions.MmaAgent),\n    VulnerabilityAssessment = tostring(extensions.MdeVulnerabilityAssessment),\n    GuestConfiguration = tostring(extensions.GuestConfiguration),\n    EndpointProtection = tostring(extensions.MdeDesignatedSubscription),\n    AgentlessVmScanning = tostring(extensions.AgentlessVmScanning),\n    FileIntegrityMonitoring = tostring(extensions.FileIntegrityMonitoring)\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
               "title": "Defender for Servers extensions",
@@ -922,8 +1255,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "contains", "thresholdValue": "Standard", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "Standard",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -933,8 +1275,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "warning", "text": "On (deprecated)" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "warning",
+                          "text": "On (deprecated)"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -944,8 +1295,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -955,8 +1315,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -966,8 +1335,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -977,8 +1355,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -988,20 +1375,47 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   }
                 ],
                 "filter": true,
                 "labelSettings": [
-                  { "columnId": "LogAnalyticsAgent", "label": "Log Analytics agent" },
-                  { "columnId": "VulnerabilityAssessment", "label": "Vulnerability assessment" },
-                  { "columnId": "GuestConfiguration", "label": "Guest Configuration agent" },
-                  { "columnId": "EndpointProtection", "label": "Endpoint protection" },
-                  { "columnId": "AgentlessVmScanning", "label": "Agentless scanning for machines" },
-                  { "columnId": "FileIntegrityMonitoring", "label": "File Integrity Monitoring" }
+                  {
+                    "columnId": "LogAnalyticsAgent",
+                    "label": "Log Analytics agent"
+                  },
+                  {
+                    "columnId": "VulnerabilityAssessment",
+                    "label": "Vulnerability assessment"
+                  },
+                  {
+                    "columnId": "GuestConfiguration",
+                    "label": "Guest Configuration agent"
+                  },
+                  {
+                    "columnId": "EndpointProtection",
+                    "label": "Endpoint protection"
+                  },
+                  {
+                    "columnId": "AgentlessVmScanning",
+                    "label": "Agentless scanning for machines"
+                  },
+                  {
+                    "columnId": "FileIntegrityMonitoring",
+                    "label": "File Integrity Monitoring"
+                  }
                 ]
               }
             },
@@ -1018,7 +1432,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"Containers\"\n| extend pricingTier = tostring(properties.pricingTier)\n| mv-expand ext = properties.extensions\n| extend extSet = pack(tostring(ext.name), tostring(ext.isEnabled))\n| summarize extensions = make_bag(extSet) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    AgentlessVmScanning = tostring(extensions.AgentlessVmScanning),\n    DefenderSensor = tostring(extensions.DefenderDaemonSet),\n    AzurePolicy = tostring(extensions.AzurePolicy),\n    K8sApiAccess = tostring(extensions.AgentlessDiscoveryForKubernetes),\n    RegistryAccess = tostring(extensions.ContainerRegistriesVulnerabilityAssessments)\n| order by Subscription asc",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"Containers\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| mv-expand ext = properties.extensions\n| extend extSet = pack(tostring(ext.name), tostring(ext.isEnabled))\n| summarize extensions = make_bag(extSet) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    AgentlessVmScanning = tostring(extensions.AgentlessVmScanning),\n    DefenderSensor = tostring(extensions.DefenderDaemonSet),\n    AzurePolicy = tostring(extensions.AzurePolicy),\n    K8sApiAccess = tostring(extensions.AgentlessDiscoveryForKubernetes),\n    RegistryAccess = tostring(extensions.ContainerRegistriesVulnerabilityAssessments)\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
               "title": "Defender for Containers extensions",
@@ -1035,8 +1449,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "Standard", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -1046,8 +1469,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -1057,8 +1489,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -1068,8 +1509,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -1079,8 +1529,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -1090,19 +1549,43 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   }
                 ],
                 "filter": true,
                 "labelSettings": [
-                  { "columnId": "AgentlessVmScanning", "label": "Agentless scanning for machines" },
-                  { "columnId": "DefenderSensor", "label": "Defender sensor" },
-                  { "columnId": "AzurePolicy", "label": "Azure Policy" },
-                  { "columnId": "K8sApiAccess", "label": "Kubernetes API access" },
-                  { "columnId": "RegistryAccess", "label": "Registry access" }
+                  {
+                    "columnId": "AgentlessVmScanning",
+                    "label": "Agentless scanning for machines"
+                  },
+                  {
+                    "columnId": "DefenderSensor",
+                    "label": "Defender sensor"
+                  },
+                  {
+                    "columnId": "AzurePolicy",
+                    "label": "Azure Policy"
+                  },
+                  {
+                    "columnId": "K8sApiAccess",
+                    "label": "Kubernetes API access"
+                  },
+                  {
+                    "columnId": "RegistryAccess",
+                    "label": "Registry access"
+                  }
                 ]
               }
             },
@@ -1119,7 +1602,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"StorageAccounts\"\n| extend pricingTier = tostring(properties.pricingTier)\n| mv-expand ext = properties.extensions\n| extend extSet = pack(tostring(ext.name), tostring(ext.isEnabled))\n| summarize extensions = make_bag(extSet) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    MalwareScanning = tostring(extensions.OnUploadMalwareScanning),\n    SensitiveDataDiscovery = tostring(extensions.SensitiveDataDiscovery)\n| order by Subscription asc",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"StorageAccounts\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| mv-expand ext = properties.extensions\n| extend extSet = pack(tostring(ext.name), tostring(ext.isEnabled))\n| summarize extensions = make_bag(extSet) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    MalwareScanning = tostring(extensions.OnUploadMalwareScanning),\n    SensitiveDataDiscovery = tostring(extensions.SensitiveDataDiscovery)\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
               "title": "Defender for Storage extensions",
@@ -1136,8 +1619,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "Standard", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -1147,8 +1639,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -1158,8 +1659,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   }
@@ -1180,7 +1690,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"AI\"\n| extend pricingTier = tostring(properties.pricingTier)\n| mv-expand ext = properties.extensions\n| extend extSet = pack(tostring(ext.name), tostring(ext.isEnabled))\n| summarize extensions = make_bag(extSet) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    SuspiciousPromptEvidence = tostring(extensions.SuspiciousPromptEvidence),\n    DataSecurityForAI = tostring(extensions.DataSecurityForAIInteractions),\n    AIModelSecurity = tostring(extensions.AIModelSecurity)\n| order by Subscription asc",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"AI\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| mv-expand ext = properties.extensions\n| extend extSet = pack(tostring(ext.name), tostring(ext.isEnabled))\n| summarize extensions = make_bag(extSet) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    SuspiciousPromptEvidence = tostring(extensions.SuspiciousPromptEvidence),\n    DataSecurityForAI = tostring(extensions.DataSecurityForAIInteractions),\n    AIModelSecurity = tostring(extensions.AIModelSecurity)\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
               "title": "Defender for AI extensions",
@@ -1197,8 +1707,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "Standard", "representation": "success", "text": "{0}" },
-                        { "operator": "Default", "representation": "disabled", "text": "{0}" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "{0}"
+                        }
                       ]
                     }
                   },
@@ -1208,8 +1727,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -1219,8 +1747,17 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   },
@@ -1230,17 +1767,35 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
-                        { "operator": "==", "thresholdValue": "True", "representation": "success", "text": "On" },
-                        { "operator": "Default", "representation": "disabled", "text": "Off" }
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "On"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "disabled",
+                          "text": "Off"
+                        }
                       ]
                     }
                   }
                 ],
                 "filter": true,
                 "labelSettings": [
-                  { "columnId": "SuspiciousPromptEvidence", "label": "Suspicious Prompt Evidence" },
-                  { "columnId": "DataSecurityForAI", "label": "Data Security for AI" },
-                  { "columnId": "AIModelSecurity", "label": "AI Model Security (Preview)" }
+                  {
+                    "columnId": "SuspiciousPromptEvidence",
+                    "label": "Suspicious Prompt Evidence"
+                  },
+                  {
+                    "columnId": "DataSecurityForAI",
+                    "label": "Data Security for AI"
+                  },
+                  {
+                    "columnId": "AIModelSecurity",
+                    "label": "AI Model Security (Preview)"
+                  }
                 ]
               }
             },
