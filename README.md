@@ -10,7 +10,7 @@ An Azure Monitor Workbook that answers **"How well is the cloud estate protected
 |---|---|
 | **Executive Summary** | KPI tiles: average Secure Score, total subscriptions, subs with no Defender plan, subs with full coverage. Includes a drill-down table of subscriptions with zero Defender plans. |
 | **Secure Score per Subscription** | Sortable grid and bar chart of Secure Score %, healthy/unhealthy controls, and max points per subscription. |
-| **Protection Gaps** | Resources (VMs, storage accounts, containers, etc.) split into Protected vs Unprotected, with a coverage % heatmap and a per-subscription drill-down of unprotected resources. |
+| **Protection Gaps** | Resources (VMs, storage accounts, containers, etc.) split into Protected vs Unprotected, with a coverage % heatmap, a per-subscription drill-down of unprotected resources, and a **Stopped** column showing deallocated (powered-off) VMs. Includes detailed list of unprotected server resources. |
 | **Plan Status per Subscription** | Matrix of all 14 Defender plans (CSPM, Servers, Containers, App Services, Storage, SQL, Cosmos DB, Key Vault, Resource Manager, APIs, AI, DNS) with On/Off/On(subPlan) icons per subscription. |
 | **Extensions & Features** | Per-plan extension tables showing which optional capabilities are enabled: CSPM (7 extensions), Servers (6), Containers (5), Storage (2), AI (3). |
 
@@ -79,8 +79,11 @@ az resource create \
 1. Open the workbook in the portal
 2. Use the **Subscriptions** pill filter at the top to scope the view to one, several, or all subscriptions
 3. Click each tab to explore the corresponding view
-4. Use the **Export to Excel** button (available on most grids) to export data for reporting
-5. Click column headers in any grid to sort
+4. On the **Protection Gaps** tab:
+   - **Stopped column** shows deallocated (powered-off) Azure VMs — these are included in the Total count
+   - **Power State column** in the unprotected servers list shows whether each server is running or deallocated
+5. Use the **Export to Excel** button (available on most grids) to export data for reporting
+6. Click column headers in any grid to sort
 
 ---
 
@@ -94,11 +97,29 @@ All data comes from **Azure Resource Graph** — no agents, no Log Analytics wor
 | `resources` | Counting actual resources (VMs, storage accounts, etc.) for coverage gap calculations |
 | `resourcecontainers` | Resolving subscription IDs to friendly subscription names |
 
-Secure Score deduplication uses a canonical ID match to avoid management-group-scoped duplicates:
+### Secure Score deduplication
+Uses a canonical ID match to avoid management-group-scoped duplicates:
 ```kql
 | where tolower(id) == tolower(strcat("/subscriptions/", subscriptionId, "/providers/microsoft.security/securescores/ascscore"))
 | summarize arg_min(id, *) by subscriptionId
 ```
+
+### Pricing deduplication
+Defender plan queries use a canonical pricing ID filter and tier-based ranking to avoid counting duplicate rows from Azure Resource Graph:
+```kql
+| where pricingId == tolower(strcat("/subscriptions/", subscriptionId, "/providers/microsoft.security/pricings/", planName))
+| extend tierRank = case(pricingTier == "Standard", 2, pricingTier == "Free", 1, 0)
+| summarize arg_max(tierRank, *) by subscriptionId, planName
+```
+This ensures Standard-tier plans take precedence over Free, and prevents duplicate rows from inflating resource counts.
+
+### Deallocated VM handling
+The workbook includes **deallocated (powered-off) Azure VMs** in resource counts because they:
+- Still consume compute capacity reservations
+- Are subject to Defender for Cloud licensing
+- Represent blind spots if not protected
+
+A **Stopped** column in the Protection Gaps tab breaks this out separately so you can see the split between running and deallocated VMs at a glance.
 
 ---
 
@@ -178,6 +199,6 @@ Pull requests welcome. When editing the workbook JSON:
 
 ---
 
-## License
+## About
 
-MIT
+Created by **Rhesa Baar**
