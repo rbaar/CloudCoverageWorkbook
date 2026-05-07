@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Defender for Cloud — Security Coverage\n\nA single view that answers: **\"How well is the cloud estate protected?\"**\n\nUse the tabs below to drill in:\n\n| Tab | Question it answers |\n|---|---|\n| **Executive Summary** | What's the headline? Secure Score, blind-spot subs, top KPIs |\n| **Secure Score per Subscription** | How does each subscription score, and where should we focus? |\n| **Protection Gaps** | How many resources are unprotected per workload type? |\n| **Plan Status per Subscription** | Which Defender plans are on or off in each subscription? |\n| **Extensions & Features** | Are advanced capabilities (agentless scanning, malware detection, etc.) enabled? |\n\n---"
+        "json": "# Defender for Cloud — Security Coverage\n\nA single view that answers: **\"How well is the cloud estate protected?\"**\n\nUse the tabs below to drill in:\n\n| Tab | Question it answers |\n|---|---|\n| **Executive Summary** | What's the headline? Secure Score, blind-spot subs, top KPIs, and top recommendations |\n| **Secure Score per Subscription** | How does each subscription score, and where should we focus? |\n| **Protection Gaps** | How many resources are unprotected per workload type? |\n| **Plan Status per Subscription** | Which Defender plans are on or off in each subscription? |\n| **Extensions & Features** | Are advanced capabilities (agentless scanning, malware detection, etc.) enabled? |\n| **Regulatory Compliance** | Which standards are failing, and where are the governance gaps? |\n\n---"
       },
       "name": "header"
     },
@@ -31,6 +31,21 @@
             },
             "defaultValue": "value::all",
             "label": "Subscriptions"
+          },
+          {
+            "id": "c2d3e4f5-a6b7-8901-cdef-234567890abc",
+            "version": "KqlParameterItem/1.0",
+            "name": "Severity",
+            "label": "Recommendation Severity",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "jsonData": "[{\"value\":\"High\",\"label\":\"High\",\"selected\":true},{\"value\":\"Medium\",\"label\":\"Medium\",\"selected\":false}]"
           }
         ],
         "style": "pills",
@@ -104,6 +119,14 @@
             "linkLabel": "Extensions & Features",
             "subTarget": "Extensions",
             "style": "link"
+          },
+          {
+            "id": "tab-compliance",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Regulatory Compliance",
+            "subTarget": "RegulatoryCompliance",
+            "style": "link"
           }
         ]
       },
@@ -118,14 +141,14 @@
           {
             "type": 1,
             "content": {
-              "json": "## At a glance — security coverage\n\nThe tiles below summarize the headline numbers. Everything refreshes when you change the subscription filter at the top.\n\n- **Secure Score** — Microsoft's average posture score across selected subscriptions (0–100%). Higher is better.\n- **Subs with NO Defender plan** — subscriptions where every workload is on Free tier (full blind spot).\n- **Subs with full coverage** — subscriptions where all 14 Defender plans are enabled.\n- **Total subscriptions in scope** — the denominator for the numbers above."
+              "json": "## At a glance — security coverage\n\nThe tiles below summarize the headline numbers. Everything refreshes when you change the subscription filter at the top.\n\n- **Secure Score** — Microsoft's average posture score across selected subscriptions (0–100%). Higher is better.\n- **Subs with NO Defender plan** — subscriptions where every workload is on Free tier (full blind spot).\n- **Subs with full coverage** — subscriptions where all 14 Defender plans are enabled.\n- **Total subscriptions in scope** — the denominator for the numbers above.\n\nScroll down for the **Top 10 Recommendations** — the highest-impact unhealthy Defender recommendations across the selected subscriptions. Use the **Recommendation Severity** filter above to show High, Medium, or both."
             },
             "name": "exec-intro"
           },
           {
             "type": 1,
             "content": {
-              "json": "### Version Control\n\n- **2026-05-01** — **v1.0** — Initial release created by Rhesa Baar"
+              "json": "### Version Control\n\n- **2026-05-07** — **v1.1** — Renamed top risks to top recommendations and added severity filtering (Rhesa Baar)\n- **2026-05-01** — **v1.0** — Initial release created by Rhesa Baar"
             },
             "name": "exec-version-control"
           },
@@ -278,6 +301,77 @@
               }
             },
             "name": "no-plan-grid"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "---\n### Top 10 recommendations\n\nThese are the highest-impact Defender for Cloud recommendations that are currently **unhealthy** across your selected subscriptions. The list focuses on built-in assessments and sorts by the number of affected resources so the top rows represent the largest current exposure. Use the **Recommendation Severity** filter above to show High, Medium, or both."
+            },
+            "name": "top-recommendations-header"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ \"microsoft.security/assessments\"\n| extend severity = tostring(properties.metadata.severity)\n| extend assessmentType = tostring(properties.metadata.assessmentType)\n| extend statusCode = tostring(properties.status.code)\n| extend displayName = tostring(properties.displayName)\n| extend category = tostring(properties.metadata.categories[0])\n| where statusCode =~ \"Unhealthy\"\n| where assessmentType =~ \"BuiltIn\"\n| where severity in~ ({Severity})\n| summarize AffectedResources = count(), Subscriptions = dcount(subscriptionId) by displayName, severity, category\n| order by AffectedResources desc\n| take 10\n| project Recommendation = displayName, Severity = severity, Category = category, AffectedResources, Subscriptions",
+              "size": 0,
+              "showExportToExcel": true,
+              "title": "Top 10 recommendations by affected resources",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "3",
+                          "text": "{0}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "AffectedResources",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "orange"
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "AffectedResources",
+                    "label": "Affected Resources"
+                  },
+                  {
+                    "columnId": "Subscriptions",
+                    "label": "Subscriptions Affected"
+                  }
+                ]
+              }
+            },
+            "name": "top-recommendations-grid"
           }
         ]
       },
@@ -1852,6 +1946,197 @@
         "value": "Extensions"
       },
       "name": "group-extensions"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": 0,
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Regulatory Compliance\n\nThis tab shows the compliance status for each standard enabled in your subscriptions. Defender for Cloud maps its security recommendations to controls in frameworks like Microsoft Cloud Security Benchmark, PCI DSS, ISO 27001, NIST, SOC 2, and more.\n\n**How to read this:**\n- **Compliance %** — percentage of controls that passed. Red = low, green = high.\n- **Failed** — controls where one or more linked recommendations are unhealthy.\n- **Passed** — controls where all linked recommendations are healthy.\n- **Skipped** — controls marked as not applicable (exempt).\n\n> To assign additional standards, go to **Defender for Cloud > Regulatory Compliance > Manage compliance policies**."
+            },
+            "name": "rc-intro"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ \"microsoft.security/regulatorycompliancestandards\"\n| extend standardName = tostring(name)\n| extend passedControls = toint(properties.passedControls)\n| extend failedControls = toint(properties.failedControls)\n| extend skippedControls = toint(properties.skippedControls)\n| extend totalControls = passedControls + failedControls\n| extend pct = iff(totalControls > 0, round(todouble(passedControls) / todouble(totalControls) * 100, 0), todouble(-1))\n| extend state = tostring(properties.state)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, Standard = standardName, State = state, Passed = passedControls, Failed = failedControls, Skipped = skippedControls, CompliancePct = pct\n| order by CompliancePct asc",
+              "size": 0,
+              "showAnalytics": true,
+              "showExportToExcel": true,
+              "title": "Compliance by standard and subscription (lowest first)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Passed",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "2",
+                          "text": "{0}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Passed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "green"
+                    }
+                  },
+                  {
+                    "columnMatch": "Failed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "red"
+                    }
+                  },
+                  {
+                    "columnMatch": "CompliancePct",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "redGreen",
+                      "min": 0,
+                      "max": 100
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "CompliancePct",
+                    "label": "Compliance %"
+                  }
+                ]
+              }
+            },
+            "name": "rc-standards-grid"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ \"microsoft.security/regulatorycompliancestandards\"\n| extend standardName = tostring(name)\n| extend passedControls = toint(properties.passedControls)\n| extend failedControls = toint(properties.failedControls)\n| extend totalControls = passedControls + failedControls\n| extend pct = iff(totalControls > 0, round(todouble(passedControls) / todouble(totalControls) * 100, 0), todouble(-1))\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, Standard = standardName, CompliancePct = pct\n| order by CompliancePct asc",
+              "size": 0,
+              "title": "Compliance % by standard and subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "visualization": "barchart",
+              "chartSettings": {
+                "xAxis": "Standard",
+                "yAxis": [
+                  "CompliancePct"
+                ],
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "CompliancePct",
+                    "color": "blue"
+                  }
+                ],
+                "ySettings": {
+                  "min": 0,
+                  "max": 100
+                }
+              }
+            },
+            "name": "rc-chart"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "---\n### Governance gap: subscriptions with no DCSPM or compliance standards\n\nIf a subscription has **Defender CSPM (CloudPosture)** set to Free, it receives only the default Microsoft Cloud Security Benchmark. It will not be assessed against additional regulatory standards (PCI, ISO, SOC, etc.). The table below shows subscriptions that have zero Standard-tier plans enabled — the largest governance blind spots."
+            },
+            "name": "rc-governance-gap-header"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend tier = tostring(properties.pricingTier)\n| summarize StandardPlans = countif(tier == \"Standard\"),\n            TotalPlansEvaluated = count() by subscriptionId\n| where StandardPlans == 0\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/regulatorycompliancestandards\"\n    | extend failedControls = toint(properties.failedControls)\n    | summarize Standards = dcount(name), TotalFailedControls = sum(failedControls) by subscriptionId\n) on subscriptionId\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, TotalPlansEvaluated, StandardPlans, ComplianceStandards = coalesce(Standards, 0), TotalFailedControls = coalesce(TotalFailedControls, 0)\n| order by Subscription asc",
+              "size": 0,
+              "showExportToExcel": true,
+              "title": "Subscriptions with no Defender plans (governance blind spots)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "TotalFailedControls",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "red"
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TotalPlansEvaluated",
+                    "label": "Plans Evaluated"
+                  },
+                  {
+                    "columnId": "StandardPlans",
+                    "label": "Standard Plans"
+                  },
+                  {
+                    "columnId": "ComplianceStandards",
+                    "label": "Compliance Standards Assigned"
+                  },
+                  {
+                    "columnId": "TotalFailedControls",
+                    "label": "Total Failed Controls"
+                  }
+                ]
+              }
+            },
+            "name": "rc-governance-gap-grid"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "RegulatoryCompliance"
+      },
+      "name": "group-regulatory-compliance"
     }
   ],
   "fallbackResourceIds": [

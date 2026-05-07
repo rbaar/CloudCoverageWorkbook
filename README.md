@@ -2,17 +2,20 @@
 
 An Azure Monitor Workbook that answers **"How well is the cloud estate protected?"** in a single view. It uses Azure Resource Graph to surface Defender for Cloud data across all your subscriptions without requiring a Log Analytics workspace.
 
+Current workbook version: **v1.1** (2026-05-07)
+
 ---
 
 ## What's in the workbook
 
 | Tab | What it shows |
 |---|---|
-| **Executive Summary** | KPI tiles: average Secure Score, total subscriptions, subs with no Defender plan, subs with full coverage. Includes a drill-down table of subscriptions with zero Defender plans. |
+| **Executive Summary** | KPI tiles: average Secure Score, total subscriptions, subs with no Defender plan, subs with full coverage. Includes a drill-down table of subscriptions with zero Defender plans and a Top 10 recommendations grid filtered by severity (High/Medium). |
 | **Secure Score per Subscription** | Sortable grid and bar chart of Secure Score %, healthy/unhealthy controls, and max points per subscription. |
 | **Protection Gaps** | Resources (VMs, storage accounts, containers, etc.) split into Protected vs Unprotected, with a coverage % heatmap, a per-subscription drill-down of unprotected resources, and a **Stopped** column showing deallocated (powered-off) VMs. **DCSPM/CSPM and Resource Manager are shown as subscription counts** (total subscriptions vs protected/unprotected subscriptions). Includes detailed list of unprotected server resources. |
 | **Plan Status per Subscription** | Matrix of all 14 Defender plans (CSPM, Servers, Containers, App Services, Storage, SQL, Cosmos DB, Key Vault, Resource Manager, APIs, AI, DNS) with On/Off/On(subPlan) icons per subscription. |
 | **Extensions & Features** | Per-plan extension tables showing which optional capabilities are enabled: CSPM (7 extensions), Servers (6), Containers (5), Storage (2), AI (3). |
+| **Regulatory Compliance** | Compliance status by standard and subscription, compliance percentage chart, and governance gap view for subscriptions with no Standard Defender plans. |
 
 ---
 
@@ -78,13 +81,15 @@ az resource create \
 
 1. Open the workbook in the portal
 2. Use the **Subscriptions** pill filter at the top to scope the view to one, several, or all subscriptions
-3. Click each tab to explore the corresponding view
-4. On the **Protection Gaps** tab:
+3. Use the **Recommendation Severity** filter to scope the Top 10 recommendations grid in Executive Summary
+4. Click each tab to explore the corresponding view
+5. On the **Protection Gaps** tab:
    - **Stopped column** shows deallocated (powered-off) Azure VMs — these are included in the Total count
    - **Power State column** in the unprotected servers list shows whether each server is running or deallocated
     - **Resource Manager (Arm)** is subscription-scoped, so its Total/Protected/Unprotected values represent subscription counts
-5. Use the **Export to Excel** button (available on most grids) to export data for reporting
-6. Click column headers in any grid to sort
+6. On the **Regulatory Compliance** tab, review low-compliance standards and governance blind spots first
+7. Use the **Export to Excel** button (available on most grids) to export data for reporting
+8. Click column headers in any grid to sort
 
 ---
 
