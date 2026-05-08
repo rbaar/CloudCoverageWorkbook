@@ -197,6 +197,12 @@ Ensure you have at least **Reader** access to the selected subscriptions and tha
 
 ---
 
+## Disclaimer
+
+This workbook is provided for **informational purposes only** to assist with visibility into your security posture. The data is sourced from Azure Resource Graph and Microsoft Defender for Cloud APIs and may be incomplete, delayed, or inaccurate. No legal rights, compliance certifications, or security guarantees of any kind can be derived from the information displayed here. Always verify findings through official channels before taking action.
+
+---
+
 ## Contributing
 
 Pull requests welcome. When editing the workbook JSON:
