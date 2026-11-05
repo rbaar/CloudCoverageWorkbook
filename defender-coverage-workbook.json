@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Defender for Cloud — Security Coverage\n\nA single view that answers: **\"How well is the cloud estate protected?\"**\n\nUse the tabs below to drill in:\n\n| Tab | Question it answers |\n|---|---|\n| **Executive Summary** | What's the headline? Secure Score, blind-spot subs, top KPIs, and top recommendations |\n| **Secure Score per Subscription** | How does each subscription score, and where should we focus? |\n| **Protection Gaps** | How many resources are unprotected per workload type? |\n| **Plan Status per Subscription** | Which Defender plans are on or off in each subscription? |\n| **Extensions & Features** | Are advanced capabilities (agentless scanning, malware detection, etc.) enabled? |\n| **Regulatory Compliance** | Which standards are failing, and where are the governance gaps? |\n\n---\n\n> ⚠️ **Disclaimer:** This workbook is provided for informational purposes only to assist with visibility into your security posture. The data is sourced from Azure Resource Graph and Microsoft Defender for Cloud APIs and may be incomplete, delayed, or inaccurate. No legal rights, compliance certifications, or security guarantees of any kind can be derived from the information displayed here. Always verify findings through official channels before taking action."
+        "json": "# Defender for Cloud — Security Coverage\n\nA single view that answers: **\"How well is the cloud estate protected?\"**\n\nUse the tabs below to drill in:\n\n| Tab | Question it answers |\n|---|---|\n| **Executive Summary** | What's the headline? Secure Score, blind-spot subs, top KPIs, and top recommendations |\n| **Secure Score per Subscription** | How does each subscription score, and where should we focus? |\n| **Protection Gaps** | Which inventory is under enabled, disabled, or unknown subscription plans? |\n| **Plan Status per Subscription** | Which Defender plans are on or off in each subscription? |\n| **Extensions & Features** | Which extension settings are On, Off, or Unknown? |\n| **Regulatory Compliance** | Which standards are failing, and where are the governance gaps? |\n\n---\n\n> ⚠️ **Disclaimer:** This workbook is provided for informational purposes only to assist with visibility into your security posture. The data is sourced from Azure Resource Graph and Microsoft Defender for Cloud APIs and may be incomplete, delayed, or inaccurate. No legal rights, compliance certifications, or security guarantees of any kind can be derived from the information displayed here. Always verify findings through official channels before taking action."
       },
       "name": "header"
     },
@@ -136,19 +136,19 @@
       "type": 12,
       "content": {
         "version": "NotebookGroup/1.0",
-        "groupType": 0,
+        "groupType": "editable",
         "items": [
           {
             "type": 1,
             "content": {
-              "json": "## At a glance — security coverage\n\nThe tiles below summarize the headline numbers. Everything refreshes when you change the subscription filter at the top.\n\n- **Secure Score** — Microsoft's average posture score across selected subscriptions (0–100%). Higher is better.\n- **Subs with NO Defender plan** — subscriptions where every workload is on Free tier (full blind spot).\n- **Subs with full coverage** — subscriptions where all 14 Defender plans are enabled.\n- **Total subscriptions in scope** — the denominator for the numbers above.\n\nScroll down for the **Top 10 Recommendations** — the highest-impact unhealthy Defender recommendations across the selected subscriptions. Use the **Recommendation Severity** filter above to show High, Medium, or both."
+              "json": "## At a glance - subscription-plan enablement\n\nThe tiles summarize the subscriptions visible to you in the selected scope.\n\n- **Secure Score** - average of available subscription scores (0-100%). The tile shows the scored/total subscription count; missing scores are not zero.\n- **Subs with no Standard plans** - subscriptions with pricing data, only Free tiers, and no unknown tiers.\n- **Subs with all 14 included plans on** - a literal count for the workbook's fixed plan list, including legacy DNS. This is not workload-applicable or verified resource coverage.\n- **Total visible subscriptions in scope** - subscriptions returned by Resource Graph, including those without pricing records.\n\nThe table below also exposes missing or unrecognized pricing data. Visibility is limited by your permissions; missing data is not proof of a disabled plan. Use the severity filter for Top 10 Recommendations."
             },
             "name": "exec-intro"
           },
           {
             "type": 1,
             "content": {
-              "json": "### Version Control\n\n- **2026-05-07** — **v1.1** — Renamed top risks to top recommendations and added severity filtering (Rhesa Baar)\n- **2026-05-01** — **v1.0** — Initial release created by Rhesa Baar"
+              "json": "### Version Control\n\n- **2026-11-05** - **v1.2** - Fixed group configuration, scope, database mappings, unknown states, and plan-enablement labels\n- **2026-05-07** — **v1.1** — Renamed top risks to top recommendations and added severity filtering (Rhesa Baar)\n- **2026-05-01** — **v1.0** — Initial release created by Rhesa Baar"
             },
             "name": "exec-version-control"
           },
@@ -156,7 +156,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/securescores\"\n| where name =~ \"ascScore\"\n| where tolower(id) == tolower(strcat(\"/subscriptions/\", subscriptionId, \"/providers/microsoft.security/securescores/ascscore\"))\n| summarize arg_min(id, *) by subscriptionId\n| extend pct = min_of(todouble(properties.score.percentage) * 100, 100.0)\n| summarize Score = round(avg(pct), 0)\n| project Metric = \"Secure Score (avg %)\", Value = tostring(toint(coalesce(Score, todouble(0))))",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/securescores\" and name =~ \"ascScore\"\n    | extend subId = tolower(subscriptionId)\n    | where tolower(id) == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/securescores/ascscore\")\n    | summarize arg_min(id, *) by subId\n    | extend RawScorePct = todouble(properties.score.percentage) * 100,\n             Current = todouble(properties.score.current), MaxPoints = todouble(properties.score.max),\n             Healthy = toint(properties.healthyResourceCount),\n             Unhealthy = toint(properties.unhealthyResourceCount),\n             NotApplicable = toint(properties.notApplicableResourceCount)\n    | extend ScorePct = iff(RawScorePct >= 0 and RawScorePct <= 100, RawScorePct, real(null))\n    | project subId, ScorePct, Current, MaxPoints, Healthy, Unhealthy, NotApplicable\n) on subId\n| extend ScoreStatus = iff(isnull(ScorePct), \"Unknown / no score data\", \"Available\")\n| summarize Score = round(avg(ScorePct), 0), ScoredSubscriptions = countif(isnotnull(ScorePct)), TotalSubscriptions = count()\n| project Metric = strcat(\"Secure Score avg % (\", ScoredSubscriptions, \"/\", TotalSubscriptions, \" subs)\"),\n          Value = iff(isnull(Score), \"Unknown\", tostring(toint(Score)))",
               "size": 4,
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
@@ -171,7 +171,7 @@
                 },
                 "leftContent": {
                   "columnMatch": "Value",
-                  "formatter": 12,
+                  "formatter": 1,
                   "formatOptions": {
                     "palette": "auto"
                   }
@@ -187,7 +187,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| summarize Cnt = dcount(subId)\n| project Metric = \"Total subscriptions in scope\", Value = tostring(Cnt)",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| summarize Cnt = count()\n| project Metric = \"Total visible subscriptions in scope\", Value = tostring(Cnt)",
               "size": 4,
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
@@ -218,7 +218,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| summarize StandardPlans = countif(pricingTier == \"Standard\") by subId\n| summarize Cnt = countif(StandardPlans == 0)\n| project Metric = \"Subs with NO Defender plan\", Value = tostring(Cnt)",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | summarize StandardPlans = countif(pricingTier =~ \"Standard\"),\n                FreePlans = countif(pricingTier =~ \"Free\"),\n                UnknownPlans = countif(pricingTier !in~ (\"Standard\", \"Free\")),\n                TotalPlansEvaluated = count(),\n                IncludedStandardPlans = countif(planName in (\"cloudposture\", \"virtualmachines\", \"containers\", \"appservices\", \"storageaccounts\", \"sqlservers\", \"sqlservervirtualmachines\", \"opensourcerelationaldatabases\", \"cosmosdbs\", \"keyvaults\", \"arm\", \"api\", \"ai\", \"dns\") and pricingTier =~ \"Standard\")\n        by subId\n) on subId\n| extend TotalPlansEvaluated = coalesce(TotalPlansEvaluated, tolong(0)),\n         StandardPlans = coalesce(StandardPlans, tolong(0)),\n         FreePlans = coalesce(FreePlans, tolong(0)),\n         UnknownPlans = coalesce(UnknownPlans, tolong(0)),\n         IncludedStandardPlans = coalesce(IncludedStandardPlans, tolong(0))\n| extend PricingDataStatus = case(TotalPlansEvaluated == 0, \"No pricing data\",\n                                 UnknownPlans > 0, \"Unknown pricing tier\", \"Available\")\n| extend PlanStatus = case(StandardPlans > 0, \"One or more plans on\",\n                          PricingDataStatus != \"Available\", \"Unknown\", \"No Standard plans\")\n| summarize Cnt = countif(PlanStatus == \"No Standard plans\")\n| project Metric = \"Subs with no Standard plans (known data)\", Value = tostring(Cnt)",
               "size": 4,
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
@@ -249,7 +249,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where planName in~ (\"CloudPosture\", \"VirtualMachines\", \"AppServices\", \"SqlServers\", \"OpenSourceRelationalDatabases\", \"CosmosDbs\", \"StorageAccounts\", \"Containers\", \"KeyVaults\", \"Arm\", \"Api\", \"AI\", \"SqlServerVirtualMachines\", \"Dns\")\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| summarize StandardPlans = countif(pricingTier == \"Standard\"), TotalPlans = 14 by subId\n| summarize Cnt = countif(StandardPlans == 14)\n| project Metric = \"Subs with full Defender coverage\", Value = tostring(Cnt)",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | summarize StandardPlans = countif(pricingTier =~ \"Standard\"),\n                FreePlans = countif(pricingTier =~ \"Free\"),\n                UnknownPlans = countif(pricingTier !in~ (\"Standard\", \"Free\")),\n                TotalPlansEvaluated = count(),\n                IncludedStandardPlans = countif(planName in (\"cloudposture\", \"virtualmachines\", \"containers\", \"appservices\", \"storageaccounts\", \"sqlservers\", \"sqlservervirtualmachines\", \"opensourcerelationaldatabases\", \"cosmosdbs\", \"keyvaults\", \"arm\", \"api\", \"ai\", \"dns\") and pricingTier =~ \"Standard\")\n        by subId\n) on subId\n| extend TotalPlansEvaluated = coalesce(TotalPlansEvaluated, tolong(0)),\n         StandardPlans = coalesce(StandardPlans, tolong(0)),\n         FreePlans = coalesce(FreePlans, tolong(0)),\n         UnknownPlans = coalesce(UnknownPlans, tolong(0)),\n         IncludedStandardPlans = coalesce(IncludedStandardPlans, tolong(0))\n| extend PricingDataStatus = case(TotalPlansEvaluated == 0, \"No pricing data\",\n                                 UnknownPlans > 0, \"Unknown pricing tier\", \"Available\")\n| extend PlanStatus = case(StandardPlans > 0, \"One or more plans on\",\n                          PricingDataStatus != \"Available\", \"Unknown\", \"No Standard plans\")\n| summarize Cnt = countif(IncludedStandardPlans == 14)\n| project Metric = \"Subs with all 14 included plans on\", Value = tostring(Cnt)",
               "size": 4,
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
@@ -279,7 +279,7 @@
           {
             "type": 1,
             "content": {
-              "json": "---\n### Subscriptions with no Defender plans\n\nThese subscriptions have every Defender plan set to Free — meaning **zero MDC coverage**. Could be intentional (sandbox/dev) or an accidental gap. Worth a conversation with the owners."
+              "json": "---\n### No Standard plans or unknown pricing data\n\nSubscriptions with known Free-tier pricing have no observed Standard subscription plans. Missing records or unrecognized tiers are shown separately as **Unknown**, not as plan-off or zero protection. This view does not establish whether every possible plan was returned, and does not measure baseline CSPM capabilities or resource-level protection."
             },
             "name": "no-plan-intro"
           },
@@ -287,10 +287,10 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend tier = tostring(properties.pricingTier)\n| summarize StandardPlans = countif(tier == \"Standard\"),\n            TotalPlansEvaluated = count() by subscriptionId\n| where StandardPlans == 0\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, TotalPlansEvaluated, StandardPlans\n| order by Subscription asc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | summarize StandardPlans = countif(pricingTier =~ \"Standard\"),\n                FreePlans = countif(pricingTier =~ \"Free\"),\n                UnknownPlans = countif(pricingTier !in~ (\"Standard\", \"Free\")),\n                TotalPlansEvaluated = count(),\n                IncludedStandardPlans = countif(planName in (\"cloudposture\", \"virtualmachines\", \"containers\", \"appservices\", \"storageaccounts\", \"sqlservers\", \"sqlservervirtualmachines\", \"opensourcerelationaldatabases\", \"cosmosdbs\", \"keyvaults\", \"arm\", \"api\", \"ai\", \"dns\") and pricingTier =~ \"Standard\")\n        by subId\n) on subId\n| extend TotalPlansEvaluated = coalesce(TotalPlansEvaluated, tolong(0)),\n         StandardPlans = coalesce(StandardPlans, tolong(0)),\n         FreePlans = coalesce(FreePlans, tolong(0)),\n         UnknownPlans = coalesce(UnknownPlans, tolong(0)),\n         IncludedStandardPlans = coalesce(IncludedStandardPlans, tolong(0))\n| extend PricingDataStatus = case(TotalPlansEvaluated == 0, \"No pricing data\",\n                                 UnknownPlans > 0, \"Unknown pricing tier\", \"Available\")\n| extend PlanStatus = case(StandardPlans > 0, \"One or more plans on\",\n                          PricingDataStatus != \"Available\", \"Unknown\", \"No Standard plans\")\n| where PlanStatus in (\"No Standard plans\", \"Unknown\") or PricingDataStatus != \"Available\"\n| project Subscription, PlanStatus, PricingDataStatus, TotalPlansEvaluated, StandardPlans, FreePlans, UnknownPlans\n| order by PricingDataStatus asc, Subscription asc",
               "size": 0,
               "showExportToExcel": true,
-              "title": "Subscriptions with NO Defender plans enabled",
+              "title": "Subscriptions with no Standard plans or unknown pricing data",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
               "crossComponentResources": [
@@ -386,12 +386,12 @@
       "type": 12,
       "content": {
         "version": "NotebookGroup/1.0",
-        "groupType": 0,
+        "groupType": "editable",
         "items": [
           {
             "type": 1,
             "content": {
-              "json": "## Secure Score per subscription\n\nMicrosoft's Secure Score is a 0–100% posture score per subscription. It reflects how many security recommendations are healthy versus unhealthy — weighted by impact.\n\n**How to read this:**\n- **Score %** — overall posture, higher is better. Red = below 50%, green = above 80%.\n- **Healthy / Unhealthy** — how many security controls passed vs failed.\n- **Max points** — the maximum possible score for the subscription.\n\nStart with the lowest scoring subscriptions — that's where the biggest posture wins are."
+              "json": "## Secure Score per subscription\n\nScore % is shown only when Resource Graph reports a valid subscription score (0-100%). Missing scores remain **Unknown / no score data**, not zero. The KPI averages available scores and shows how many of the visible subscriptions contributed; the chart omits missing scores.\n\nCurrent/max points and optional resource-count fields remain blank when not reported. Healthy/Unhealthy, where present, are reported resource counts, not counts of security controls.\n\nThe color gradient runs from low to high score; use the status column to identify missing data before prioritizing low scores."
             },
             "name": "score-intro"
           },
@@ -399,7 +399,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/securescores\"\n| where name =~ \"ascScore\"\n| where tolower(id) == tolower(strcat(\"/subscriptions/\", subscriptionId, \"/providers/microsoft.security/securescores/ascscore\"))\n| summarize arg_min(id, *) by subscriptionId\n| extend ScorePct = round(min_of(todouble(properties.score.percentage) * 100, 100.0), 0),\n         Current = todouble(properties.score.current),\n         Max = todouble(properties.score.max),\n         HealthyControls = toint(properties.healthyResourceCount),\n         UnhealthyControls = toint(properties.unhealthyResourceCount),\n         NotApplicable = toint(properties.notApplicableResourceCount)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n          ScorePct,\n          Current = round(Current, 1),\n          MaxPoints = round(Max, 1),\n          Healthy = HealthyControls,\n          Unhealthy = UnhealthyControls,\n          NotApplicable\n| order by ScorePct asc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/securescores\" and name =~ \"ascScore\"\n    | extend subId = tolower(subscriptionId)\n    | where tolower(id) == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/securescores/ascscore\")\n    | summarize arg_min(id, *) by subId\n    | extend RawScorePct = todouble(properties.score.percentage) * 100,\n             Current = todouble(properties.score.current), MaxPoints = todouble(properties.score.max),\n             Healthy = toint(properties.healthyResourceCount),\n             Unhealthy = toint(properties.unhealthyResourceCount),\n             NotApplicable = toint(properties.notApplicableResourceCount)\n    | extend ScorePct = iff(RawScorePct >= 0 and RawScorePct <= 100, RawScorePct, real(null))\n    | project subId, ScorePct, Current, MaxPoints, Healthy, Unhealthy, NotApplicable\n) on subId\n| extend ScoreStatus = iff(isnull(ScorePct), \"Unknown / no score data\", \"Available\")\n| project Subscription, ScoreStatus, ScorePct = round(ScorePct, 0), Current = round(Current, 1),\n          MaxPoints = round(MaxPoints, 1), Healthy, Unhealthy, NotApplicable\n| order by ScorePct asc nulls first, Subscription asc",
               "size": 0,
               "showAnalytics": true,
               "showExportToExcel": true,
@@ -465,7 +465,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/securescores\"\n| where name =~ \"ascScore\"\n| where tolower(id) == tolower(strcat(\"/subscriptions/\", subscriptionId, \"/providers/microsoft.security/securescores/ascscore\"))\n| summarize arg_min(id, *) by subscriptionId\n| extend ScorePct = round(min_of(todouble(properties.score.percentage) * 100, 100.0), 0)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, ScorePct\n| order by ScorePct asc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/securescores\" and name =~ \"ascScore\"\n    | extend subId = tolower(subscriptionId)\n    | where tolower(id) == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/securescores/ascscore\")\n    | summarize arg_min(id, *) by subId\n    | extend RawScorePct = todouble(properties.score.percentage) * 100,\n             Current = todouble(properties.score.current), MaxPoints = todouble(properties.score.max),\n             Healthy = toint(properties.healthyResourceCount),\n             Unhealthy = toint(properties.unhealthyResourceCount),\n             NotApplicable = toint(properties.notApplicableResourceCount)\n    | extend ScorePct = iff(RawScorePct >= 0 and RawScorePct <= 100, RawScorePct, real(null))\n    | project subId, ScorePct, Current, MaxPoints, Healthy, Unhealthy, NotApplicable\n) on subId\n| extend ScoreStatus = iff(isnull(ScorePct), \"Unknown / no score data\", \"Available\")\n| where isnotnull(ScorePct)\n| project Subscription, ScorePct = round(ScorePct, 0)\n| order by ScorePct asc, Subscription asc",
               "size": 0,
               "title": "Score % per subscription (lowest first)",
               "queryType": 1,
@@ -506,12 +506,12 @@
       "type": 12,
       "content": {
         "version": "NotebookGroup/1.0",
-        "groupType": 0,
+        "groupType": "editable",
         "items": [
           {
             "type": 1,
             "content": {
-              "json": "## Where are the gaps?\n\nThis table shows the actual number of resources per Defender plan — split into what's protected and what's not.\n\nIf the **Unprotected** column shows a number above zero, those resources have no Defender coverage. They won't generate security alerts, vulnerability findings, or threat detections.\n\n**How to read this:**\n- **Total** = all resources of this type in your selected subscriptions\n- **Protected** = resources in subscriptions where the plan is turned on\n- **Unprotected** = resources in subscriptions where the plan is turned off — your blind spots\n- **Stopped** = Azure VMs that are deallocated (NOT currently allocated/powered-off; included in Total; shown separately for context)\n- **Coverage %** = Protected / Total\n- **Resource Manager note** = this plan is subscription-scoped, so Total/Protected/Unprotected are subscription counts (not resource counts)"
+              "json": "## Where are the subscription-plan gaps?\n\nThis view counts resource inventory under **enabled**, **disabled**, or **unknown** subscription-level plans. It does not verify effective resource protection, onboarding, exclusions, sensors, or resource-level pricing overrides.\n\n- **Under enabled plan** = inventory associated with a Standard subscription plan.\n- **Under disabled plan** = inventory associated with a Free subscription plan.\n- **Unknown plan status** = missing pricing record or unrecognized pricing tier.\n- **Total** = the sum of those three mutually exclusive categories.\n- **Under enabled plan %** = enabled-plan inventory / total inventory, including unknowns in the denominator. No resources means **N/A**, not 0% or -1%.\n- **Stopped** = deallocated Azure VMs, a subset of Total; it is not an extra coverage category or a billing conclusion.\n- **Count unit** = subscriptions for CSPM and Resource Manager; resources for other workloads. Do not sum across workload rows: units differ and a VM can also have a SQL VM resource.\n\nSQL servers/managed instances, registered SQL VM resources, and open-source database servers are separate workloads. AKS/ACR, AI service resources, and API Management instances are inventory proxies, not counts of onboarded protected clusters, models, or APIs. The chart uses exactly the same population and plan-status logic as this table."
             },
             "name": "gap-header"
           },
@@ -519,11 +519,11 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId),\n         pricingId = tolower(tostring(id))\n| where planName in~ (\"CloudPosture\", \"VirtualMachines\", \"AppServices\", \"SqlServers\", \"OpenSourceRelationalDatabases\", \"CosmosDbs\", \"StorageAccounts\", \"Containers\", \"AI\", \"KeyVaults\", \"Arm\", \"Api\")\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| project subId, planName, pricingTier\n| join kind=leftouter (\n    resources\n    | extend vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | extend isStopped = iff(type =~ \"microsoft.compute/virtualmachines\" and tolower(vmPowerState) contains \"deallocated\", tolong(1), tolong(0))\n    | extend planCategory = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"VirtualMachines\",\n        type =~ \"microsoft.web/sites\", \"AppServices\",\n        type in~ (\"microsoft.sql/servers\", \"microsoft.sql/managedinstances\", \"microsoft.dbforpostgresql/flexibleservers\", \"microsoft.dbformysql/flexibleservers\", \"microsoft.dbformariadb/servers\"), \"SqlServers\",\n        type =~ \"microsoft.documentdb/databaseaccounts\", \"CosmosDbs\",\n        type =~ \"microsoft.storage/storageaccounts\", \"StorageAccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"Containers\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"AI\",\n        type =~ \"microsoft.keyvault/vaults\", \"KeyVaults\",\n        type =~ \"microsoft.apimanagement/service\", \"Api\",\n        \"\"\n    )\n    | where planCategory != \"\"\n    | summarize ResourceCount = count(), StoppedCount = sum(isStopped) by subscriptionId, planCategory\n    | union (\n        resourcecontainers\n        | where type =~ \"microsoft.resources/subscriptions\"\n        | extend planCategories = dynamic([\"CloudPosture\", \"Arm\"])\n        | mv-expand planCategory = planCategories to typeof(string)\n        | summarize ResourceCount = count(), StoppedCount = tolong(0) by subscriptionId, planCategory\n    )\n) on $left.subId == $right.subscriptionId and $left.planName == $right.planCategory\n| extend ResourceCount = coalesce(ResourceCount, tolong(0))\n| extend StoppedCount = coalesce(StoppedCount, tolong(0))\n| summarize\n    TotalResources = sum(ResourceCount),\n    Protected = sumif(ResourceCount, pricingTier == \"Standard\"),\n    Unprotected = sumif(ResourceCount, pricingTier == \"Free\"),\n    Stopped = sum(StoppedCount)\n    by planName\n| extend DisplayName = case(\n    planName =~ \"CloudPosture\", \"DCSPM (per subscription basis)\",\n    planName =~ \"VirtualMachines\", \"Servers (VMs & Arc)\",\n    planName =~ \"AppServices\", \"App Services\",\n    planName =~ \"SqlServers\", \"Databases (SQL & OSS)\",\n    planName =~ \"OpenSourceRelationalDatabases\", \"Databases (SQL & OSS)\",\n    planName =~ \"CosmosDbs\", \"Cosmos DB\",\n    planName =~ \"StorageAccounts\", \"Storage Accounts\",\n    planName =~ \"Containers\", \"Containers (AKS & ACR)\",\n    planName =~ \"AI\", \"AI Services\",\n    planName =~ \"KeyVaults\", \"Key Vault\",\n    planName =~ \"Arm\", \"Resource Manager (per subscription basis)\",\n    planName =~ \"Api\", \"API Management\",\n    planName\n)\n| summarize\n    TotalResources = sum(TotalResources),\n    Protected = sum(Protected),\n    Unprotected = sum(Unprotected),\n    Stopped = sum(Stopped)\n    by DisplayName\n| extend CoveragePct = iff(TotalResources > 0, round(todouble(Protected) / todouble(TotalResources) * 100, 0), todouble(-1))\n| order by Unprotected desc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| extend planCategories = dynamic([\"cloudposture\",\"virtualmachines\",\"containers\",\"appservices\",\"storageaccounts\",\"sqlservers\",\"sqlservervirtualmachines\",\"opensourcerelationaldatabases\",\"cosmosdbs\",\"keyvaults\",\"arm\",\"api\",\"ai\"])\n| mv-expand planName = planCategories to typeof(string)\n| extend ResourceCount = iff(planName in (\"cloudposture\", \"arm\"), tolong(1), tolong(0)),\n         StoppedCount = tolong(0), nameRank = 1\n| project subId, Subscription, planName, ResourceCount, StoppedCount, nameRank\n| union (\n    resources\n    | extend subId = tolower(subscriptionId),\n             vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | extend isStopped = iff(type =~ \"microsoft.compute/virtualmachines\" and vmPowerState =~ \"PowerState/deallocated\", tolong(1), tolong(0))\n    | extend planName = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"virtualmachines\",\n        type =~ \"microsoft.web/sites\", \"appservices\",\n        type in~ (\"microsoft.sql/servers\", \"microsoft.sql/managedinstances\"), \"sqlservers\",\n        type =~ \"microsoft.sqlvirtualmachine/sqlvirtualmachines\", \"sqlservervirtualmachines\",\n        type in~ (\"microsoft.dbforpostgresql/flexibleservers\", \"microsoft.dbforpostgresql/servers\",\n                  \"microsoft.dbformysql/flexibleservers\", \"microsoft.dbformysql/servers\",\n                  \"microsoft.dbformariadb/servers\"), \"opensourcerelationaldatabases\",\n        type =~ \"microsoft.documentdb/databaseaccounts\", \"cosmosdbs\",\n        type =~ \"microsoft.storage/storageaccounts\", \"storageaccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"containers\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"ai\",\n        type =~ \"microsoft.keyvault/vaults\", \"keyvaults\",\n        type =~ \"microsoft.apimanagement/service\", \"api\",\n        \"\")\n    | where isnotempty(planName)\n    | summarize ResourceCount = count(), StoppedCount = sum(isStopped) by subId, planName\n    | extend Subscription = \"\", nameRank = 0\n)\n| summarize ResourceCount = sum(ResourceCount), StoppedCount = sum(StoppedCount),\n            arg_max(nameRank, Subscription) by subId, planName\n| where nameRank == 1\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | project subId, planName, pricingTier\n) on subId, planName\n| extend PlanStatus = case(pricingTier =~ \"Standard\", \"On\", pricingTier =~ \"Free\", \"Off\", \"Unknown\"),\n         DisplayName = case(\n    planName == \"cloudposture\", \"Defender CSPM (subscriptions)\",\n    planName == \"virtualmachines\", \"Servers (VMs & Arc)\",\n    planName == \"containers\", \"Containers (AKS & ACR)\",\n    planName == \"appservices\", \"App Services\",\n    planName == \"storageaccounts\", \"Storage Accounts\",\n    planName == \"sqlservers\", \"SQL servers & managed instances\",\n    planName == \"sqlservervirtualmachines\", \"SQL on VMs (SQL VM resources)\",\n    planName == \"opensourcerelationaldatabases\", \"Open-source databases\",\n    planName == \"cosmosdbs\", \"Cosmos DB\",\n    planName == \"keyvaults\", \"Key Vault\",\n    planName == \"arm\", \"Resource Manager (subscriptions)\",\n    planName == \"api\", \"API Management\",\n    planName == \"ai\", \"AI Services\",\n    planName),\n         Unit = iff(planName in (\"cloudposture\", \"arm\"), \"Subscriptions\", \"Resources\")\n| summarize TotalResources = sum(ResourceCount),\n            PlanOn = sumif(ResourceCount, PlanStatus == \"On\"),\n            PlanOff = sumif(ResourceCount, PlanStatus == \"Off\"),\n            Unknown = sumif(ResourceCount, PlanStatus == \"Unknown\"),\n            Stopped = sum(StoppedCount)\n    by DisplayName, Unit\n| extend PlanOnPct = iff(TotalResources > 0, round(todouble(PlanOn) / todouble(TotalResources) * 100, 0), real(null)),\n         DataStatus = case(TotalResources == 0, \"N/A - no resources\", Unknown > 0, \"Incomplete pricing data\", \"Available\")\n| order by PlanOff desc, Unknown desc, DisplayName asc",
               "size": 0,
               "showAnalytics": true,
               "showExportToExcel": true,
-              "title": "Protection gaps per resource type",
+              "title": "Subscription-plan enablement by workload (not verified resource protection)",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
               "crossComponentResources": [
@@ -543,7 +543,7 @@
                     }
                   },
                   {
-                    "columnMatch": "Protected",
+                    "columnMatch": "PlanOn",
                     "formatter": 8,
                     "formatOptions": {
                       "palette": "green"
@@ -556,7 +556,7 @@
                     }
                   },
                   {
-                    "columnMatch": "Unprotected",
+                    "columnMatch": "PlanOff",
                     "formatter": 8,
                     "formatOptions": {
                       "palette": "red"
@@ -569,7 +569,7 @@
                     }
                   },
                   {
-                    "columnMatch": "CoveragePct",
+                    "columnMatch": "PlanOnPct",
                     "formatter": 8,
                     "formatOptions": {
                       "palette": "redGreen",
@@ -596,33 +596,52 @@
                         "style": "decimal"
                       }
                     }
+                  },
+                  {
+                    "columnMatch": "Unknown",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "orange"
+                    }
                   }
                 ],
                 "filter": true,
                 "labelSettings": [
                   {
                     "columnId": "DisplayName",
-                    "label": "Resource Type"
+                    "label": "Workload"
                   },
                   {
                     "columnId": "TotalResources",
                     "label": "Total"
                   },
                   {
-                    "columnId": "Protected",
-                    "label": "Protected"
+                    "columnId": "PlanOn",
+                    "label": "Under enabled plan"
                   },
                   {
-                    "columnId": "Unprotected",
-                    "label": "Unprotected"
+                    "columnId": "PlanOff",
+                    "label": "Under disabled plan"
                   },
                   {
-                    "columnId": "CoveragePct",
-                    "label": "Coverage %"
+                    "columnId": "PlanOnPct",
+                    "label": "Under enabled plan %"
                   },
                   {
                     "columnId": "Stopped",
                     "label": "Stopped (deallocated)"
+                  },
+                  {
+                    "columnId": "Unknown",
+                    "label": "Unknown plan status"
+                  },
+                  {
+                    "columnId": "Unit",
+                    "label": "Count unit"
+                  },
+                  {
+                    "columnId": "DataStatus",
+                    "label": "Data status"
                   }
                 ]
               }
@@ -633,9 +652,9 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId),\n         pricingId = tolower(tostring(id))\n| where planName in~ (\"CloudPosture\", \"VirtualMachines\", \"AppServices\", \"SqlServers\", \"CosmosDbs\", \"StorageAccounts\", \"Containers\", \"AI\", \"KeyVaults\", \"Api\")\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| project subId, planName, pricingTier\n| join kind=leftouter (\n    resources\n    | extend vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | extend isStopped = iff(type =~ \"microsoft.compute/virtualmachines\" and tolower(vmPowerState) contains \"deallocated\", tolong(1), tolong(0))\n    | extend planCategory = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"VirtualMachines\",\n        type =~ \"microsoft.web/sites\", \"AppServices\",\n        type in~ (\"microsoft.sql/servers\", \"microsoft.sql/managedinstances\", \"microsoft.dbforpostgresql/flexibleservers\", \"microsoft.dbformysql/flexibleservers\", \"microsoft.dbformariadb/servers\"), \"SqlServers\",\n        type =~ \"microsoft.documentdb/databaseaccounts\", \"CosmosDbs\",\n        type =~ \"microsoft.storage/storageaccounts\", \"StorageAccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"Containers\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"AI\",\n        type =~ \"microsoft.keyvault/vaults\", \"KeyVaults\",\n        type =~ \"microsoft.apimanagement/service\", \"Api\",\n        \"\"\n    )\n    | where planCategory != \"\"\n    | summarize ResourceCount = count(), StoppedCount = sum(isStopped) by subscriptionId, planCategory\n    | union (\n        resourcecontainers\n        | where type =~ \"microsoft.resources/subscriptions\"\n        | project subscriptionId, planCategory = \"CloudPosture\", ResourceCount = tolong(1), StoppedCount = tolong(0)\n    )\n) on $left.subId == $right.subscriptionId and $left.planName == $right.planCategory\n| extend ResourceCount = coalesce(ResourceCount, tolong(0))\n| extend StoppedCount = coalesce(StoppedCount, tolong(0))\n| summarize\n    Protected = sumif(ResourceCount, pricingTier == \"Standard\"),\n    Unprotected = sumif(ResourceCount, pricingTier == \"Free\"),\n    Stopped = sum(StoppedCount)\n    by planName\n| extend DisplayName = case(\n    planName =~ \"CloudPosture\", \"DCSPM (per subscription basis)\",\n    planName =~ \"VirtualMachines\", \"Servers\",\n    planName =~ \"AppServices\", \"App Svc\",\n    planName =~ \"SqlServers\", \"Databases\",\n    planName =~ \"CosmosDbs\", \"Cosmos\",\n    planName =~ \"StorageAccounts\", \"Storage\",\n    planName =~ \"Containers\", \"Containers\",\n    planName =~ \"AI\", \"AI\",\n    planName =~ \"KeyVaults\", \"Key Vault\",\n    planName =~ \"Api\", \"APIM\",\n    planName\n)\n| project DisplayName, Protected, Unprotected, Stopped",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| extend planCategories = dynamic([\"cloudposture\",\"virtualmachines\",\"containers\",\"appservices\",\"storageaccounts\",\"sqlservers\",\"sqlservervirtualmachines\",\"opensourcerelationaldatabases\",\"cosmosdbs\",\"keyvaults\",\"arm\",\"api\",\"ai\"])\n| mv-expand planName = planCategories to typeof(string)\n| extend ResourceCount = iff(planName in (\"cloudposture\", \"arm\"), tolong(1), tolong(0)),\n         StoppedCount = tolong(0), nameRank = 1\n| project subId, Subscription, planName, ResourceCount, StoppedCount, nameRank\n| union (\n    resources\n    | extend subId = tolower(subscriptionId),\n             vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | extend isStopped = iff(type =~ \"microsoft.compute/virtualmachines\" and vmPowerState =~ \"PowerState/deallocated\", tolong(1), tolong(0))\n    | extend planName = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"virtualmachines\",\n        type =~ \"microsoft.web/sites\", \"appservices\",\n        type in~ (\"microsoft.sql/servers\", \"microsoft.sql/managedinstances\"), \"sqlservers\",\n        type =~ \"microsoft.sqlvirtualmachine/sqlvirtualmachines\", \"sqlservervirtualmachines\",\n        type in~ (\"microsoft.dbforpostgresql/flexibleservers\", \"microsoft.dbforpostgresql/servers\",\n                  \"microsoft.dbformysql/flexibleservers\", \"microsoft.dbformysql/servers\",\n                  \"microsoft.dbformariadb/servers\"), \"opensourcerelationaldatabases\",\n        type =~ \"microsoft.documentdb/databaseaccounts\", \"cosmosdbs\",\n        type =~ \"microsoft.storage/storageaccounts\", \"storageaccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"containers\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"ai\",\n        type =~ \"microsoft.keyvault/vaults\", \"keyvaults\",\n        type =~ \"microsoft.apimanagement/service\", \"api\",\n        \"\")\n    | where isnotempty(planName)\n    | summarize ResourceCount = count(), StoppedCount = sum(isStopped) by subId, planName\n    | extend Subscription = \"\", nameRank = 0\n)\n| summarize ResourceCount = sum(ResourceCount), StoppedCount = sum(StoppedCount),\n            arg_max(nameRank, Subscription) by subId, planName\n| where nameRank == 1\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | project subId, planName, pricingTier\n) on subId, planName\n| extend PlanStatus = case(pricingTier =~ \"Standard\", \"On\", pricingTier =~ \"Free\", \"Off\", \"Unknown\"),\n         DisplayName = case(\n    planName == \"cloudposture\", \"Defender CSPM (subscriptions)\",\n    planName == \"virtualmachines\", \"Servers (VMs & Arc)\",\n    planName == \"containers\", \"Containers (AKS & ACR)\",\n    planName == \"appservices\", \"App Services\",\n    planName == \"storageaccounts\", \"Storage Accounts\",\n    planName == \"sqlservers\", \"SQL servers & managed instances\",\n    planName == \"sqlservervirtualmachines\", \"SQL on VMs (SQL VM resources)\",\n    planName == \"opensourcerelationaldatabases\", \"Open-source databases\",\n    planName == \"cosmosdbs\", \"Cosmos DB\",\n    planName == \"keyvaults\", \"Key Vault\",\n    planName == \"arm\", \"Resource Manager (subscriptions)\",\n    planName == \"api\", \"API Management\",\n    planName == \"ai\", \"AI Services\",\n    planName),\n         Unit = iff(planName in (\"cloudposture\", \"arm\"), \"Subscriptions\", \"Resources\")\n| summarize TotalResources = sum(ResourceCount),\n            PlanOn = sumif(ResourceCount, PlanStatus == \"On\"),\n            PlanOff = sumif(ResourceCount, PlanStatus == \"Off\"),\n            Unknown = sumif(ResourceCount, PlanStatus == \"Unknown\"),\n            Stopped = sum(StoppedCount)\n    by DisplayName, Unit\n| extend PlanOnPct = iff(TotalResources > 0, round(todouble(PlanOn) / todouble(TotalResources) * 100, 0), real(null)),\n         DataStatus = case(TotalResources == 0, \"N/A - no resources\", Unknown > 0, \"Incomplete pricing data\", \"Available\")\n| order by PlanOff desc, Unknown desc, DisplayName asc\n| project DisplayName, PlanOn, PlanOff, Unknown",
               "size": 0,
-              "title": "At a glance: green = covered, red = exposed",
+              "title": "Plan on / off / unknown (CSPM and Resource Manager count subscriptions)",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
               "crossComponentResources": [
@@ -645,22 +664,22 @@
               "chartSettings": {
                 "xAxis": "DisplayName",
                 "yAxis": [
-                  "Protected",
-                  "Unprotected",
-                  "Stopped"
+                  "PlanOn",
+                  "PlanOff",
+                  "Unknown"
                 ],
                 "seriesLabelSettings": [
                   {
-                    "seriesName": "Protected",
+                    "seriesName": "PlanOn",
                     "color": "green"
                   },
                   {
-                    "seriesName": "Unprotected",
+                    "seriesName": "PlanOff",
                     "color": "redBright"
                   },
                   {
-                    "seriesName": "Stopped",
-                    "color": "gray"
+                    "seriesName": "Unknown",
+                    "color": "orange"
                   }
                 ]
               }
@@ -670,7 +689,7 @@
           {
             "type": 1,
             "content": {
-              "json": "---\n### Which subscriptions have unprotected resources?\n\nThe table below only shows subscriptions where resources exist but the corresponding Defender plan is not enabled. Sorted by the largest gap first — so you can prioritize what to address.\n\nThe **Stopped** column shows how many of those unprotected resources are deallocated (powered-off/not currently running) Azure VMs."
+              "json": "---\n### Which subscriptions have disabled or unknown plans?\n\nThis is the subscription-level breakdown of the same workload inventory as the summary table and chart, including SQL, open-source databases, CSPM, and Resource Manager. **Plan status** distinguishes known Off from Unknown; **Count unit** distinguishes resources from subscriptions.\n\nStopped counts are subsets of the displayed VM inventory, not additional resources."
             },
             "name": "drill-header"
           },
@@ -678,10 +697,10 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId),\n         pricingId = tolower(tostring(id))\n| where planName in~ (\"VirtualMachines\", \"AppServices\", \"StorageAccounts\", \"Containers\", \"KeyVaults\", \"AI\", \"Api\")\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| where pricingTier == \"Free\"\n| project subId, planName\n| join kind=inner (\n    resources\n    | extend vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | extend isStopped = iff(type =~ \"microsoft.compute/virtualmachines\" and tolower(vmPowerState) contains \"deallocated\", tolong(1), tolong(0))\n    | extend planCategory = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"VirtualMachines\",\n        type =~ \"microsoft.web/sites\", \"AppServices\",\n        type =~ \"microsoft.storage/storageaccounts\", \"StorageAccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"Containers\",\n        type =~ \"microsoft.keyvault/vaults\", \"KeyVaults\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"AI\",\n        type =~ \"microsoft.apimanagement/service\", \"Api\",\n        \"\"\n    )\n    | where planCategory != \"\"\n    | summarize ResourceCount = count(), StoppedCount = sum(isStopped) by subscriptionId, planCategory\n) on $left.subId == $right.subscriptionId and $left.planName == $right.planCategory\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on $left.subId == $right.subscriptionId\n| extend SubscriptionName = coalesce(subscriptionName, subId)\n| extend DisplayName = case(\n    planName == \"VirtualMachines\", \"Servers\",\n    planName == \"AppServices\", \"App Services\",\n    planName == \"StorageAccounts\", \"Storage Accounts\",\n    planName == \"Containers\", \"Containers\",\n    planName == \"KeyVaults\", \"Key Vault\",\n    planName == \"AI\", \"AI Services\",\n    planName == \"Api\", \"API Management\",\n    planName\n)\n| project SubscriptionName, DisplayName, ResourceCount, StoppedCount\n| order by ResourceCount desc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| extend planCategories = dynamic([\"cloudposture\",\"virtualmachines\",\"containers\",\"appservices\",\"storageaccounts\",\"sqlservers\",\"sqlservervirtualmachines\",\"opensourcerelationaldatabases\",\"cosmosdbs\",\"keyvaults\",\"arm\",\"api\",\"ai\"])\n| mv-expand planName = planCategories to typeof(string)\n| extend ResourceCount = iff(planName in (\"cloudposture\", \"arm\"), tolong(1), tolong(0)),\n         StoppedCount = tolong(0), nameRank = 1\n| project subId, Subscription, planName, ResourceCount, StoppedCount, nameRank\n| union (\n    resources\n    | extend subId = tolower(subscriptionId),\n             vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | extend isStopped = iff(type =~ \"microsoft.compute/virtualmachines\" and vmPowerState =~ \"PowerState/deallocated\", tolong(1), tolong(0))\n    | extend planName = case(\n        type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"virtualmachines\",\n        type =~ \"microsoft.web/sites\", \"appservices\",\n        type in~ (\"microsoft.sql/servers\", \"microsoft.sql/managedinstances\"), \"sqlservers\",\n        type =~ \"microsoft.sqlvirtualmachine/sqlvirtualmachines\", \"sqlservervirtualmachines\",\n        type in~ (\"microsoft.dbforpostgresql/flexibleservers\", \"microsoft.dbforpostgresql/servers\",\n                  \"microsoft.dbformysql/flexibleservers\", \"microsoft.dbformysql/servers\",\n                  \"microsoft.dbformariadb/servers\"), \"opensourcerelationaldatabases\",\n        type =~ \"microsoft.documentdb/databaseaccounts\", \"cosmosdbs\",\n        type =~ \"microsoft.storage/storageaccounts\", \"storageaccounts\",\n        type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"containers\",\n        type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"ai\",\n        type =~ \"microsoft.keyvault/vaults\", \"keyvaults\",\n        type =~ \"microsoft.apimanagement/service\", \"api\",\n        \"\")\n    | where isnotempty(planName)\n    | summarize ResourceCount = count(), StoppedCount = sum(isStopped) by subId, planName\n    | extend Subscription = \"\", nameRank = 0\n)\n| summarize ResourceCount = sum(ResourceCount), StoppedCount = sum(StoppedCount),\n            arg_max(nameRank, Subscription) by subId, planName\n| where nameRank == 1\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | project subId, planName, pricingTier\n) on subId, planName\n| extend PlanStatus = case(pricingTier =~ \"Standard\", \"On\", pricingTier =~ \"Free\", \"Off\", \"Unknown\"),\n         DisplayName = case(\n    planName == \"cloudposture\", \"Defender CSPM (subscriptions)\",\n    planName == \"virtualmachines\", \"Servers (VMs & Arc)\",\n    planName == \"containers\", \"Containers (AKS & ACR)\",\n    planName == \"appservices\", \"App Services\",\n    planName == \"storageaccounts\", \"Storage Accounts\",\n    planName == \"sqlservers\", \"SQL servers & managed instances\",\n    planName == \"sqlservervirtualmachines\", \"SQL on VMs (SQL VM resources)\",\n    planName == \"opensourcerelationaldatabases\", \"Open-source databases\",\n    planName == \"cosmosdbs\", \"Cosmos DB\",\n    planName == \"keyvaults\", \"Key Vault\",\n    planName == \"arm\", \"Resource Manager (subscriptions)\",\n    planName == \"api\", \"API Management\",\n    planName == \"ai\", \"AI Services\",\n    planName),\n         Unit = iff(planName in (\"cloudposture\", \"arm\"), \"Subscriptions\", \"Resources\")\n| where ResourceCount > 0 and PlanStatus != \"On\"\n| project SubscriptionName = Subscription, DisplayName, Unit, PlanStatus, ResourceCount, StoppedCount\n| order by ResourceCount desc, SubscriptionName asc, DisplayName asc",
               "size": 0,
               "showExportToExcel": true,
-              "title": "Unprotected resources — per subscription",
+              "title": "Disabled or unknown plans - per subscription",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
               "crossComponentResources": [
@@ -726,11 +745,19 @@
                   },
                   {
                     "columnId": "ResourceCount",
-                    "label": "Unprotected Resources"
+                    "label": "Resources / subscriptions"
                   },
                   {
                     "columnId": "StoppedCount",
                     "label": "Stopped (deallocated)"
+                  },
+                  {
+                    "columnId": "PlanStatus",
+                    "label": "Plan status"
+                  },
+                  {
+                    "columnId": "Unit",
+                    "label": "Count unit"
                   }
                 ]
               }
@@ -740,7 +767,7 @@
           {
             "type": 1,
             "content": {
-              "json": "---\n### Unprotected servers — detailed list\n\nThis list shows each unprotected server resource (Azure VM and Arc machine) in subscriptions where Defender for Servers is Free. The **Power State** column shows whether each VM is running or deallocated (powered-off — not currently allocated to compute resources)."
+              "json": "---\n### Servers under disabled or unknown subscription plans\n\nThis list includes Azure VMs and Arc machines whose subscription-level Defender for Servers plan is Free or unknown. It is not a definitive list of unprotected machines: resource overrides and actual onboarding are not evaluated. Power State is shown where available; missing VM power-state data is Unknown."
             },
             "name": "drill-servers-header"
           },
@@ -748,10 +775,10 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type == \"microsoft.security/pricings\"\n| extend planName = tostring(name),\n         pricingTier = tostring(properties.pricingTier),\n         subId = tostring(subscriptionId),\n         pricingId = tolower(tostring(id))\n| where planName =~ \"VirtualMachines\"\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| where pricingTier == \"Free\"\n| project subId\n| join kind=inner (\n    resources\n    | where type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\")\n    | extend vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n    | project subscriptionId, resourceId = id, resourceName = name, resourceType = type, resourceGroup, location, powerState = vmPowerState\n) on $left.subId == $right.subscriptionId\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on $left.subId == $right.subscriptionId\n| extend SubscriptionName = coalesce(subscriptionName, subId)\n| extend ResourceKind = case(\n    resourceType =~ \"microsoft.compute/virtualmachines\", \"Azure VM\",\n    resourceType =~ \"microsoft.hybridcompute/machines\", \"Arc Machine\",\n    resourceType\n)\n| extend PowerState = iff(ResourceKind == \"Arc Machine\", \"N/A\", iff(isempty(powerState), \"Unknown\", powerState))\n| project SubscriptionName, ResourceKind, resourceName, resourceGroup, location, PowerState, resourceId\n| order by SubscriptionName asc, ResourceKind asc, resourceName asc",
+              "query": "resources\n| extend subId = tolower(subscriptionId),\n         vmPowerState = tostring(properties.extended.instanceView.powerState.code)\n| extend isStopped = iff(type =~ \"microsoft.compute/virtualmachines\" and vmPowerState =~ \"PowerState/deallocated\", tolong(1), tolong(0))\n| extend planName = case(\n    type in~ (\"microsoft.compute/virtualmachines\", \"microsoft.hybridcompute/machines\"), \"virtualmachines\",\n    type =~ \"microsoft.web/sites\", \"appservices\",\n    type in~ (\"microsoft.sql/servers\", \"microsoft.sql/managedinstances\"), \"sqlservers\",\n    type =~ \"microsoft.sqlvirtualmachine/sqlvirtualmachines\", \"sqlservervirtualmachines\",\n    type in~ (\"microsoft.dbforpostgresql/flexibleservers\", \"microsoft.dbforpostgresql/servers\",\n              \"microsoft.dbformysql/flexibleservers\", \"microsoft.dbformysql/servers\",\n              \"microsoft.dbformariadb/servers\"), \"opensourcerelationaldatabases\",\n    type =~ \"microsoft.documentdb/databaseaccounts\", \"cosmosdbs\",\n    type =~ \"microsoft.storage/storageaccounts\", \"storageaccounts\",\n    type in~ (\"microsoft.containerservice/managedclusters\", \"microsoft.containerregistry/registries\"), \"containers\",\n    type in~ (\"microsoft.cognitiveservices/accounts\", \"microsoft.machinelearningservices/workspaces\"), \"ai\",\n    type =~ \"microsoft.keyvault/vaults\", \"keyvaults\",\n    type =~ \"microsoft.apimanagement/service\", \"api\",\n    \"\")\n| where isnotempty(planName)\n| where planName == \"virtualmachines\"\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | where planName == \"virtualmachines\"\n    | project subId, pricingTier\n) on subId\n| extend PlanStatus = case(pricingTier =~ \"Standard\", \"On\", pricingTier =~ \"Free\", \"Off\", \"Unknown\")\n| where PlanStatus != \"On\"\n| join kind=inner (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subId = tolower(subscriptionId), Subscription = name\n    | summarize arg_min(Subscription, *) by subId\n) on subId\n| extend ResourceKind = iff(type =~ \"microsoft.hybridcompute/machines\", \"Arc Machine\", \"Azure VM\")\n| extend PowerState = iff(ResourceKind == \"Arc Machine\", \"N/A\", iff(isempty(vmPowerState), \"Unknown\", vmPowerState))\n| project SubscriptionName = Subscription, PlanStatus, ResourceKind, resourceName = name,\n          resourceGroup, location, PowerState, resourceId = id\n| order by SubscriptionName asc, ResourceKind asc, resourceName asc",
               "size": 0,
               "showExportToExcel": true,
-              "title": "Unprotected servers — resource list",
+              "title": "Servers under disabled or unknown subscription plans",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
               "crossComponentResources": [
@@ -794,6 +821,10 @@
                   {
                     "columnId": "resourceId",
                     "label": "Resource ID"
+                  },
+                  {
+                    "columnId": "PlanStatus",
+                    "label": "Subscription plan status"
                   }
                 ]
               }
@@ -813,12 +844,12 @@
       "type": 12,
       "content": {
         "version": "NotebookGroup/1.0",
-        "groupType": 0,
+        "groupType": "editable",
         "items": [
           {
             "type": 1,
             "content": {
-              "json": "## Plan status per subscription\n\nThis shows which Defender plans are turned on or off in each subscription. A green checkmark means the plan is active and protecting resources. A grey icon means it's off — resources in that subscription have no coverage for that workload type.\n\nIf a sub-plan is active (like Server P1 vs P2), that detail is shown in parentheses."
+              "json": "## Plan status per subscription\n\n**On** means an observed Standard subscription-level plan; **Off** means an observed Free tier; **Unknown** means missing pricing data or an unrecognized tier. All visible subscriptions remain in the table, even without pricing records.\n\nSub-plans such as Servers P1/P2 appear in parentheses. These states do not establish effective resource protection or feature onboarding. The fixed 14-column catalogue includes legacy DNS for visibility; turning on all columns is not a recommendation."
             },
             "name": "tab2-header"
           },
@@ -826,7 +857,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier), subPlan = tostring(properties.subPlan)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| extend planSet = pack(planName, case(pricingTier =~ \"Free\", \"Off\", isnotempty(subPlan), strcat(\"On (\", subPlan, \")\"), \"On\"))\n| summarize defenderPlans = make_bag(planSet) by subscriptionId\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend SubscriptionName = coalesce(subscriptionName, subscriptionId)\n| project SubscriptionName,\n    CSPM = tostring(defenderPlans.CloudPosture),\n    Servers = tostring(defenderPlans.VirtualMachines),\n    Containers = tostring(defenderPlans.Containers),\n    AppServices = tostring(defenderPlans.AppServices),\n    Storage = tostring(defenderPlans.StorageAccounts),\n    SQL = tostring(defenderPlans.SqlServers),\n    SQL_on_VMs = tostring(defenderPlans.SqlServerVirtualMachines),\n    OSS_Databases = tostring(defenderPlans.OpenSourceRelationalDatabases),\n    CosmosDB = tostring(defenderPlans.CosmosDbs),\n    KeyVault = tostring(defenderPlans.KeyVaults),\n    ResourceManager = tostring(defenderPlans.Arm),\n    APIs = tostring(defenderPlans.Api),\n    AI = tostring(defenderPlans.AI),\n    DNS = tostring(defenderPlans.Dns)\n| order by SubscriptionName asc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | extend planSet = pack(planName, case(pricingTier =~ \"Standard\",\n                                         iff(isnotempty(subPlan), strcat(\"On (\", subPlan, \")\"), \"On\"),\n                                         pricingTier =~ \"Free\", \"Off\", \"Unknown\"))\n    | summarize defenderPlans = make_bag(planSet) by subId\n) on subId\n| project SubscriptionName = Subscription,\n    CSPM = iff(isempty(tostring(defenderPlans.cloudposture)), \"Unknown\", tostring(defenderPlans.cloudposture)),\n    Servers = iff(isempty(tostring(defenderPlans.virtualmachines)), \"Unknown\", tostring(defenderPlans.virtualmachines)),\n    Containers = iff(isempty(tostring(defenderPlans.containers)), \"Unknown\", tostring(defenderPlans.containers)),\n    AppServices = iff(isempty(tostring(defenderPlans.appservices)), \"Unknown\", tostring(defenderPlans.appservices)),\n    Storage = iff(isempty(tostring(defenderPlans.storageaccounts)), \"Unknown\", tostring(defenderPlans.storageaccounts)),\n    SQL = iff(isempty(tostring(defenderPlans.sqlservers)), \"Unknown\", tostring(defenderPlans.sqlservers)),\n    SQL_on_VMs = iff(isempty(tostring(defenderPlans.sqlservervirtualmachines)), \"Unknown\", tostring(defenderPlans.sqlservervirtualmachines)),\n    OSS_Databases = iff(isempty(tostring(defenderPlans.opensourcerelationaldatabases)), \"Unknown\", tostring(defenderPlans.opensourcerelationaldatabases)),\n    CosmosDB = iff(isempty(tostring(defenderPlans.cosmosdbs)), \"Unknown\", tostring(defenderPlans.cosmosdbs)),\n    KeyVault = iff(isempty(tostring(defenderPlans.keyvaults)), \"Unknown\", tostring(defenderPlans.keyvaults)),\n    ResourceManager = iff(isempty(tostring(defenderPlans.arm)), \"Unknown\", tostring(defenderPlans.arm)),\n    APIs = iff(isempty(tostring(defenderPlans.api)), \"Unknown\", tostring(defenderPlans.api)),\n    AI = iff(isempty(tostring(defenderPlans.ai)), \"Unknown\", tostring(defenderPlans.ai)),\n    DNS = iff(isempty(tostring(defenderPlans.dns)), \"Unknown\", tostring(defenderPlans.dns))\n| order by SubscriptionName asc",
               "size": 0,
               "showAnalytics": true,
               "showExportToExcel": true,
@@ -851,6 +882,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -868,6 +905,12 @@
                           "operator": "contains",
                           "thresholdValue": "On",
                           "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
                           "text": "{0}"
                         },
                         {
@@ -891,6 +934,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -908,6 +957,12 @@
                           "operator": "contains",
                           "thresholdValue": "On",
                           "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
                           "text": "{0}"
                         },
                         {
@@ -931,6 +986,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -948,6 +1009,12 @@
                           "operator": "contains",
                           "thresholdValue": "On",
                           "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
                           "text": "{0}"
                         },
                         {
@@ -971,6 +1038,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -988,6 +1061,12 @@
                           "operator": "contains",
                           "thresholdValue": "On",
                           "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
                           "text": "{0}"
                         },
                         {
@@ -1011,6 +1090,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -1028,6 +1113,12 @@
                           "operator": "contains",
                           "thresholdValue": "On",
                           "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
                           "text": "{0}"
                         },
                         {
@@ -1051,6 +1142,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -1068,6 +1165,12 @@
                           "operator": "contains",
                           "thresholdValue": "On",
                           "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
                           "text": "{0}"
                         },
                         {
@@ -1091,6 +1194,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -1109,6 +1218,12 @@
                           "thresholdValue": "On",
                           "representation": "warning",
                           "text": "{0} (deprecated)"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
                         },
                         {
                           "operator": "Default",
@@ -1137,12 +1252,12 @@
       "type": 12,
       "content": {
         "version": "NotebookGroup/1.0",
-        "groupType": 0,
+        "groupType": "editable",
         "items": [
           {
             "type": 1,
             "content": {
-              "json": "## Extensions & Features per Plan\n\nEach Defender plan has optional extensions that add capabilities like agentless scanning, malware detection, or sensitive data discovery. Below you'll find a separate table per plan so it's easy to see what's on and what's off."
+              "json": "## Extensions & Features per Plan\n\nThese tables show the reported configuration of known extension keys, not runtime feature health.\n\n- **On / Off** requires a recognized extension key and a valid reported boolean value.\n- **Unknown** means the key, value, or plan record was not returned or is unrecognized. It must not be read as Off.\n- Subscriptions with empty extension arrays remain visible.\n\nMatching uses exact, case-insensitive keys instead of guesses based on fragments of names. Availability depends on the plan, sub-plan, and current service support. Missing legacy or unavailable features are not automatically remediation targets."
             },
             "name": "ext-intro"
           },
@@ -1157,7 +1272,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"CloudPosture\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| mv-expand ext = properties.extensions\n| extend extName = tolower(tostring(ext.name)), extEnabled = tobool(ext.isEnabled)\n| summarize AgentlessVmScanningFlag = max(case(extName contains \"agentless\" and (extName contains \"vm\" or extName contains \"machine\"), toint(extEnabled), 0)), AgentlessK8sDiscoveryFlag = max(case((extName contains \"kubernetes\" or extName contains \"k8s\") and (extName contains \"discovery\" or extName contains \"api\"), toint(extEnabled), 0)), ContainerRegistryVAFlag = max(case((extName contains \"containerregistr\" or extName contains \"registry\") and (extName contains \"vulnerability\" or extName contains \"assessment\"), toint(extEnabled), 0)), SensitiveDataDiscoveryFlag = max(case(extName contains \"sensitive\" and extName contains \"data\", toint(extEnabled), 0)), EntraPermissionsFlag = max(case(extName contains \"entra\" or extName contains \"ciem\" or (extName contains \"permission\" and extName contains \"management\"), toint(extEnabled), 0)), ApiSecurityPostureFlag = max(case(extName contains \"api\" and (extName contains \"security\" or extName contains \"posture\"), toint(extEnabled), 0)), ServerlessProtectionFlag = max(case(extName contains \"serverless\", toint(extEnabled), 0)) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    AgentlessVmScanning = iff(AgentlessVmScanningFlag == 1, \"True\", \"False\"),\n    AgentlessK8sDiscovery = iff(AgentlessK8sDiscoveryFlag == 1, \"True\", \"False\"),\n    ContainerRegistryVA = iff(ContainerRegistryVAFlag == 1, \"True\", \"False\"),\n    SensitiveDataDiscovery = iff(SensitiveDataDiscoveryFlag == 1, \"True\", \"False\"),\n    EntraPermissions = iff(EntraPermissionsFlag == 1, \"True\", \"False\"),\n    ApiSecurityPosture = iff(ApiSecurityPostureFlag == 1, \"True\", \"False\"),\n    ServerlessProtection = iff(ServerlessProtectionFlag == 1, \"True\", \"False\")\n| order by Subscription asc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | where planName == \"cloudposture\"\n    | extend extensions = iff(array_length(properties.extensions) > 0, properties.extensions, dynamic([{}]))\n    | mv-expand ext = extensions\n    | extend extName = tolower(tostring(ext.name)), extEnabled = toint(tobool(ext.isEnabled))\n    | summarize AgentlessVmScanningFlag = max(iff(extName == \"agentlessvmscanning\", extEnabled, int(null))),\n                    AgentlessK8sDiscoveryFlag = max(iff(extName == \"agentlessdiscoveryforkubernetes\", extEnabled, int(null))),\n                    ContainerRegistryVAFlag = max(iff(extName == \"containerregistriesvulnerabilityassessments\", extEnabled, int(null))),\n                    SensitiveDataDiscoveryFlag = max(iff(extName == \"sensitivedatadiscovery\", extEnabled, int(null))),\n                    EntraPermissionsFlag = max(iff(extName == \"entrapermissionsmanagement\", extEnabled, int(null))),\n                    ApiSecurityPostureFlag = max(iff(extName == \"apisecurityposturemanagement\", extEnabled, int(null))),\n                    ServerlessProtectionFlag = max(iff(extName == \"serverlessprotection\", extEnabled, int(null)))\n        by subId, pricingTier, subPlan\n) on subId\n| extend Tier = case(pricingTier =~ \"Standard\", iff(isnotempty(subPlan), strcat(\"Standard (\", subPlan, \")\"), \"Standard\"),\n                     pricingTier =~ \"Free\", \"Free\", \"Unknown\")\n| project Subscription, Tier,\n    AgentlessVmScanning = case(AgentlessVmScanningFlag == 1, \"On\", AgentlessVmScanningFlag == 0, \"Off\", \"Unknown\"),\n    AgentlessK8sDiscovery = case(AgentlessK8sDiscoveryFlag == 1, \"On\", AgentlessK8sDiscoveryFlag == 0, \"Off\", \"Unknown\"),\n    ContainerRegistryVA = case(ContainerRegistryVAFlag == 1, \"On\", ContainerRegistryVAFlag == 0, \"Off\", \"Unknown\"),\n    SensitiveDataDiscovery = case(SensitiveDataDiscoveryFlag == 1, \"On\", SensitiveDataDiscoveryFlag == 0, \"Off\", \"Unknown\"),\n    EntraPermissions = case(EntraPermissionsFlag == 1, \"On\", EntraPermissionsFlag == 0, \"Off\", \"Unknown\"),\n    ApiSecurityPosture = case(ApiSecurityPostureFlag == 1, \"On\", ApiSecurityPostureFlag == 0, \"Off\", \"Unknown\"),\n    ServerlessProtection = case(ServerlessProtectionFlag == 1, \"On\", ServerlessProtectionFlag == 0, \"Off\", \"Unknown\")\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
               "title": "Defender CSPM extensions",
@@ -1181,6 +1296,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -1196,14 +1317,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1216,14 +1343,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1236,14 +1369,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1256,14 +1395,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1276,14 +1421,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1296,14 +1447,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1316,14 +1473,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1375,7 +1538,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"VirtualMachines\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier), subPlan = tostring(properties.subPlan)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| mv-expand ext = properties.extensions\n| extend extName = tolower(tostring(ext.name)), extEnabled = tobool(ext.isEnabled)\n| summarize LogAnalyticsAgentFlag = max(case(extName contains \"mmaagent\" or (extName contains \"log\" and extName contains \"analytics\"), toint(extEnabled), 0)), VulnerabilityAssessmentFlag = max(case(extName contains \"vulnerability\" and (extName contains \"assessment\" or extName contains \"mde\"), toint(extEnabled), 0)), GuestConfigurationFlag = max(case(extName contains \"guestconfiguration\" or (extName contains \"guest\" and extName contains \"configuration\"), toint(extEnabled), 0)), EndpointProtectionFlag = max(case(extName contains \"mdedesignatedsubscription\" or extName contains \"endpoint\" or (extName contains \"mde\" and extName contains \"subscription\"), toint(extEnabled), 0)), AgentlessVmScanningFlag = max(case(extName contains \"agentless\" and (extName contains \"vm\" or extName contains \"machine\"), toint(extEnabled), 0)), FileIntegrityMonitoringFlag = max(case(extName contains \"fileintegrity\" or (extName contains \"file\" and extName contains \"integrity\"), toint(extEnabled), 0)) by subscriptionId, pricingTier, subPlan\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| extend Tier = case(isnotempty(subPlan), strcat(pricingTier, \" (\", subPlan, \")\"), pricingTier)\n| project Subscription,\n    Tier,\n    LogAnalyticsAgent = iff(LogAnalyticsAgentFlag == 1, \"True\", \"False\"),\n    VulnerabilityAssessment = iff(VulnerabilityAssessmentFlag == 1, \"True\", \"False\"),\n    GuestConfiguration = iff(GuestConfigurationFlag == 1, \"True\", \"False\"),\n    EndpointProtection = iff(EndpointProtectionFlag == 1, \"True\", \"False\"),\n    AgentlessVmScanning = iff(AgentlessVmScanningFlag == 1, \"True\", \"False\"),\n    FileIntegrityMonitoring = iff(FileIntegrityMonitoringFlag == 1, \"True\", \"False\")\n| order by Subscription asc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | where planName == \"virtualmachines\"\n    | extend extensions = iff(array_length(properties.extensions) > 0, properties.extensions, dynamic([{}]))\n    | mv-expand ext = extensions\n    | extend extName = tolower(tostring(ext.name)), extEnabled = toint(tobool(ext.isEnabled))\n    | summarize LogAnalyticsAgentFlag = max(iff(extName == \"mmaagent\", extEnabled, int(null))),\n                    VulnerabilityAssessmentFlag = max(iff(extName == \"mdevulnerabilityassessment\", extEnabled, int(null))),\n                    GuestConfigurationFlag = max(iff(extName == \"guestconfiguration\", extEnabled, int(null))),\n                    EndpointProtectionFlag = max(iff(extName == \"mdedesignatedsubscription\", extEnabled, int(null))),\n                    AgentlessVmScanningFlag = max(iff(extName == \"agentlessvmscanning\", extEnabled, int(null))),\n                    FileIntegrityMonitoringFlag = max(iff(extName == \"fileintegritymonitoring\", extEnabled, int(null)))\n        by subId, pricingTier, subPlan\n) on subId\n| extend Tier = case(pricingTier =~ \"Standard\", iff(isnotempty(subPlan), strcat(\"Standard (\", subPlan, \")\"), \"Standard\"),\n                     pricingTier =~ \"Free\", \"Free\", \"Unknown\")\n| project Subscription, Tier,\n    LogAnalyticsAgent = case(LogAnalyticsAgentFlag == 1, \"On\", LogAnalyticsAgentFlag == 0, \"Off\", \"Unknown\"),\n    VulnerabilityAssessment = case(VulnerabilityAssessmentFlag == 1, \"On\", VulnerabilityAssessmentFlag == 0, \"Off\", \"Unknown\"),\n    GuestConfiguration = case(GuestConfigurationFlag == 1, \"On\", GuestConfigurationFlag == 0, \"Off\", \"Unknown\"),\n    EndpointProtection = case(EndpointProtectionFlag == 1, \"On\", EndpointProtectionFlag == 0, \"Off\", \"Unknown\"),\n    AgentlessVmScanning = case(AgentlessVmScanningFlag == 1, \"On\", AgentlessVmScanningFlag == 0, \"Off\", \"Unknown\"),\n    FileIntegrityMonitoring = case(FileIntegrityMonitoringFlag == 1, \"On\", FileIntegrityMonitoringFlag == 0, \"Off\", \"Unknown\")\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
               "title": "Defender for Servers extensions",
@@ -1399,6 +1562,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -1414,14 +1583,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "warning",
                           "text": "On (deprecated)"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1434,14 +1609,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1454,14 +1635,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1474,14 +1661,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1494,14 +1687,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1514,14 +1713,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1569,7 +1774,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"Containers\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| mv-expand ext = properties.extensions\n| extend extName = tolower(tostring(ext.name)), extEnabled = tobool(ext.isEnabled)\n| summarize AgentlessVmScanningFlag = max(case(extName contains \"agentless\" and (extName contains \"vm\" or extName contains \"machine\"), toint(extEnabled), 0)), DefenderSensorFlag = max(case(extName contains \"defenderdaemonset\" or (extName contains \"defender\" and extName contains \"sensor\") or (extName contains \"daemon\" and extName contains \"set\"), toint(extEnabled), 0)), AzurePolicyFlag = max(case(extName contains \"azurepolicy\" or (extName contains \"azure\" and extName contains \"policy\"), toint(extEnabled), 0)), K8sApiAccessFlag = max(case((extName contains \"kubernetes\" or extName contains \"k8s\") and (extName contains \"api\" or extName contains \"discovery\"), toint(extEnabled), 0)), RegistryAccessFlag = max(case((extName contains \"containerregistr\" or extName contains \"registry\") and (extName contains \"vulnerability\" or extName contains \"assessment\" or extName contains \"access\"), toint(extEnabled), 0)) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    AgentlessVmScanning = iff(AgentlessVmScanningFlag == 1, \"True\", \"False\"),\n    DefenderSensor = iff(DefenderSensorFlag == 1, \"True\", \"False\"),\n    AzurePolicy = iff(AzurePolicyFlag == 1, \"True\", \"False\"),\n    K8sApiAccess = iff(K8sApiAccessFlag == 1, \"True\", \"False\"),\n    RegistryAccess = iff(RegistryAccessFlag == 1, \"True\", \"False\")\n| order by Subscription asc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | where planName == \"containers\"\n    | extend extensions = iff(array_length(properties.extensions) > 0, properties.extensions, dynamic([{}]))\n    | mv-expand ext = extensions\n    | extend extName = tolower(tostring(ext.name)), extEnabled = toint(tobool(ext.isEnabled))\n    | summarize AgentlessVmScanningFlag = max(iff(extName == \"agentlessvmscanning\", extEnabled, int(null))),\n                    DefenderSensorFlag = max(iff(extName == \"defenderdaemonset\", extEnabled, int(null))),\n                    AzurePolicyFlag = max(iff(extName == \"azurepolicy\", extEnabled, int(null))),\n                    K8sApiAccessFlag = max(iff(extName == \"agentlessdiscoveryforkubernetes\", extEnabled, int(null))),\n                    RegistryAccessFlag = max(iff(extName == \"containerregistriesvulnerabilityassessments\", extEnabled, int(null)))\n        by subId, pricingTier, subPlan\n) on subId\n| extend Tier = case(pricingTier =~ \"Standard\", iff(isnotempty(subPlan), strcat(\"Standard (\", subPlan, \")\"), \"Standard\"),\n                     pricingTier =~ \"Free\", \"Free\", \"Unknown\")\n| project Subscription, Tier,\n    AgentlessVmScanning = case(AgentlessVmScanningFlag == 1, \"On\", AgentlessVmScanningFlag == 0, \"Off\", \"Unknown\"),\n    DefenderSensor = case(DefenderSensorFlag == 1, \"On\", DefenderSensorFlag == 0, \"Off\", \"Unknown\"),\n    AzurePolicy = case(AzurePolicyFlag == 1, \"On\", AzurePolicyFlag == 0, \"Off\", \"Unknown\"),\n    K8sApiAccess = case(K8sApiAccessFlag == 1, \"On\", K8sApiAccessFlag == 0, \"Off\", \"Unknown\"),\n    RegistryAccess = case(RegistryAccessFlag == 1, \"On\", RegistryAccessFlag == 0, \"Off\", \"Unknown\")\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
               "title": "Defender for Containers extensions",
@@ -1593,6 +1798,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -1608,14 +1819,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1628,14 +1845,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1648,14 +1871,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1668,14 +1897,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1688,14 +1923,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1739,7 +1980,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"StorageAccounts\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| mv-expand ext = properties.extensions\n| extend extName = tolower(tostring(ext.name)), extEnabled = tobool(ext.isEnabled)\n| summarize MalwareScanningFlag = max(case(extName contains \"malware\" or (extName contains \"upload\" and extName contains \"scan\"), toint(extEnabled), 0)), SensitiveDataDiscoveryFlag = max(case(extName contains \"sensitive\" and extName contains \"data\", toint(extEnabled), 0)) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    MalwareScanning = iff(MalwareScanningFlag == 1, \"True\", \"False\"),\n    SensitiveDataDiscovery = iff(SensitiveDataDiscoveryFlag == 1, \"True\", \"False\")\n| order by Subscription asc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | where planName == \"storageaccounts\"\n    | extend extensions = iff(array_length(properties.extensions) > 0, properties.extensions, dynamic([{}]))\n    | mv-expand ext = extensions\n    | extend extName = tolower(tostring(ext.name)), extEnabled = toint(tobool(ext.isEnabled))\n    | summarize MalwareScanningFlag = max(iff(extName == \"onuploadmalwarescanning\", extEnabled, int(null))),\n                    SensitiveDataDiscoveryFlag = max(iff(extName == \"sensitivedatadiscovery\", extEnabled, int(null)))\n        by subId, pricingTier, subPlan\n) on subId\n| extend Tier = case(pricingTier =~ \"Standard\", iff(isnotempty(subPlan), strcat(\"Standard (\", subPlan, \")\"), \"Standard\"),\n                     pricingTier =~ \"Free\", \"Free\", \"Unknown\")\n| project Subscription, Tier,\n    MalwareScanning = case(MalwareScanningFlag == 1, \"On\", MalwareScanningFlag == 0, \"Off\", \"Unknown\"),\n    SensitiveDataDiscovery = case(SensitiveDataDiscoveryFlag == 1, \"On\", SensitiveDataDiscoveryFlag == 0, \"Off\", \"Unknown\")\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
               "title": "Defender for Storage extensions",
@@ -1763,6 +2004,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -1778,14 +2025,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1798,14 +2051,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1827,7 +2086,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\" and name =~ \"AI\"\n| extend subId = tostring(subscriptionId), pricingId = tolower(tostring(id)), planName = tostring(name), pricingTier = tostring(properties.pricingTier)\n| where pricingId == tolower(strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName))\n| extend tierRank = case(pricingTier == \"Standard\", 2, pricingTier == \"Free\", 1, 0)\n| summarize arg_max(tierRank, *) by subId, planName\n| mv-expand ext = properties.extensions\n| extend extName = tolower(tostring(ext.name)), extEnabledRaw = tolower(tostring(coalesce(ext.isEnabled, ext.enabled, ext.state, ext.value)))\n| extend extEnabledNum = iff(extEnabledRaw in (\"true\", \"1\", \"yes\", \"on\", \"enabled\"), 1, 0)\n| summarize SuspiciousPromptEvidenceFlag = max(case((extName contains \"suspicious\" and extName contains \"prompt\") or extName contains \"promptevidence\", extEnabledNum, 0)), DataSecurityForAIFlag = max(case((extName contains \"data\" and extName contains \"security\") or extName contains \"purview\", extEnabledNum, 0)), AIModelSecurityFlag = max(case((extName contains \"model\" and extName contains \"security\") or extName contains \"aimodelsecurity\", extEnabledNum, 0)) by subscriptionId, pricingTier\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription,\n    Tier = pricingTier,\n    SuspiciousPromptEvidence = iff(SuspiciousPromptEvidenceFlag == 1, \"True\", \"False\"),\n    DataSecurityForAI = iff(DataSecurityForAIFlag == 1, \"True\", \"False\"),\n    AIModelSecurity = iff(AIModelSecurityFlag == 1, \"True\", \"False\")\n| order by Subscription asc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/pricings\"\n    | extend subId = tolower(subscriptionId), planName = tolower(name),\n             pricingId = tolower(id), pricingTier = tostring(properties.pricingTier),\n             subPlan = tostring(properties.subPlan)\n    | where pricingId == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", planName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, planName\n    | where planName == \"ai\"\n    | extend extensions = iff(array_length(properties.extensions) > 0, properties.extensions, dynamic([{}]))\n    | mv-expand ext = extensions\n    | extend extName = tolower(tostring(ext.name)), extEnabled = toint(tobool(ext.isEnabled))\n    | summarize SuspiciousPromptEvidenceFlag = max(iff(extName == \"suspiciouspromptevidence\", extEnabled, int(null))),\n                    DataSecurityForAIFlag = max(iff(extName == \"datasecurityforaiinteractions\", extEnabled, int(null))),\n                    AIModelSecurityFlag = max(iff(extName == \"aimodelsecurity\", extEnabled, int(null)))\n        by subId, pricingTier, subPlan\n) on subId\n| extend Tier = case(pricingTier =~ \"Standard\", iff(isnotempty(subPlan), strcat(\"Standard (\", subPlan, \")\"), \"Standard\"),\n                     pricingTier =~ \"Free\", \"Free\", \"Unknown\")\n| project Subscription, Tier,\n    SuspiciousPromptEvidence = case(SuspiciousPromptEvidenceFlag == 1, \"On\", SuspiciousPromptEvidenceFlag == 0, \"Off\", \"Unknown\"),\n    DataSecurityForAI = case(DataSecurityForAIFlag == 1, \"On\", DataSecurityForAIFlag == 0, \"Off\", \"Unknown\"),\n    AIModelSecurity = case(AIModelSecurityFlag == 1, \"On\", AIModelSecurityFlag == 0, \"Off\", \"Unknown\")\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
               "title": "Defender for AI extensions",
@@ -1851,6 +2110,12 @@
                           "text": "{0}"
                         },
                         {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "warning",
+                          "text": "{0}"
+                        },
+                        {
                           "operator": "Default",
                           "representation": "disabled",
                           "text": "{0}"
@@ -1866,14 +2131,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1886,14 +2157,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1906,14 +2183,20 @@
                       "thresholdsGrid": [
                         {
                           "operator": "==",
-                          "thresholdValue": "True",
+                          "thresholdValue": "On",
                           "representation": "success",
                           "text": "On"
                         },
                         {
-                          "operator": "Default",
+                          "operator": "==",
+                          "thresholdValue": "Off",
                           "representation": "disabled",
                           "text": "Off"
+                        },
+                        {
+                          "operator": "Default",
+                          "representation": "warning",
+                          "text": "{0}"
                         }
                       ]
                     }
@@ -1951,12 +2234,12 @@
       "type": 12,
       "content": {
         "version": "NotebookGroup/1.0",
-        "groupType": 0,
+        "groupType": "editable",
         "items": [
           {
             "type": 1,
             "content": {
-              "json": "## Regulatory Compliance\n\nThis tab shows the compliance status for each standard enabled in your subscriptions. Defender for Cloud maps its security recommendations to controls in frameworks like Microsoft Cloud Security Benchmark, PCI DSS, ISO 27001, NIST, SOC 2, and more.\n\n**How to read this:**\n- **Compliance %** — percentage of controls that passed. Red = low, green = high.\n- **Failed** — controls where one or more linked recommendations are unhealthy.\n- **Passed** — controls where all linked recommendations are healthy.\n- **Skipped** — controls marked as not applicable (exempt).\n\n> To assign additional standards, go to **Defender for Cloud > Regulatory Compliance > Manage compliance policies**."
+              "json": "## Regulatory Compliance\n\nThis tab shows standards and control results returned by Defender for Cloud in Resource Graph. It is not a compliance certification.\n\n- **Compliance %** = passed / (passed + failed) controls; skipped controls are excluded.\n- Missing counts are **Unknown**. No evaluated controls is **N/A**, not -1% or 0%.\n- The chart omits unknown/N/A percentages; the table retains them with a status.\n- Subscriptions without standards data are not automatically compliant; the governance-context table calls out missing data for subscriptions with no Standard plans or unknown pricing.\n\nTo manage standards, use **Defender for Cloud > Regulatory Compliance > Manage compliance policies**."
             },
             "name": "rc-intro"
           },
@@ -1964,7 +2247,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/regulatorycompliancestandards\"\n| extend standardName = tostring(name)\n| extend passedControls = toint(properties.passedControls)\n| extend failedControls = toint(properties.failedControls)\n| extend skippedControls = toint(properties.skippedControls)\n| extend totalControls = passedControls + failedControls\n| extend pct = iff(totalControls > 0, round(todouble(passedControls) / todouble(totalControls) * 100, 0), todouble(-1))\n| extend state = tostring(properties.state)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, Standard = standardName, State = state, Passed = passedControls, Failed = failedControls, Skipped = skippedControls, CompliancePct = pct\n| order by CompliancePct asc",
+              "query": "securityresources\n| where type =~ \"microsoft.security/regulatorycompliancestandards\"\n| extend passedControls = toint(properties.passedControls),\n         failedControls = toint(properties.failedControls),\n         skippedControls = toint(properties.skippedControls),\n         standardName = tostring(name), state = tostring(properties.state)\n| extend totalControls = passedControls + failedControls\n| extend pct = iff(totalControls > 0, round(todouble(passedControls) / todouble(totalControls) * 100, 0), real(null))\n| extend ComplianceStatus = case(isnull(totalControls), \"Unknown\", totalControls == 0, \"N/A - no evaluated controls\", \"Available\")\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, Standard = standardName, State = state, Passed = passedControls,\n          Failed = failedControls, Skipped = skippedControls, CompliancePct = pct, ComplianceStatus\n| order by CompliancePct asc nulls first",
               "size": 0,
               "showAnalytics": true,
               "showExportToExcel": true,
@@ -2048,7 +2331,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/regulatorycompliancestandards\"\n| extend standardName = tostring(name)\n| extend passedControls = toint(properties.passedControls)\n| extend failedControls = toint(properties.failedControls)\n| extend totalControls = passedControls + failedControls\n| extend pct = iff(totalControls > 0, round(todouble(passedControls) / todouble(totalControls) * 100, 0), todouble(-1))\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, Standard = standardName, CompliancePct = pct\n| order by CompliancePct asc",
+              "query": "securityresources\n| where type =~ \"microsoft.security/regulatorycompliancestandards\"\n| extend passedControls = toint(properties.passedControls),\n         failedControls = toint(properties.failedControls),\n         skippedControls = toint(properties.skippedControls),\n         standardName = tostring(name), state = tostring(properties.state)\n| extend totalControls = passedControls + failedControls\n| extend pct = iff(totalControls > 0, round(todouble(passedControls) / todouble(totalControls) * 100, 0), real(null))\n| extend ComplianceStatus = case(isnull(totalControls), \"Unknown\", totalControls == 0, \"N/A - no evaluated controls\", \"Available\")\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| where isnotnull(pct)\n| project Subscription, Standard = standardName, CompliancePct = pct\n| order by CompliancePct asc",
               "size": 0,
               "title": "Compliance % by standard and subscription",
               "queryType": 1,
@@ -2079,7 +2362,7 @@
           {
             "type": 1,
             "content": {
-              "json": "---\n### Governance gap: subscriptions with no DCSPM or compliance standards\n\nIf a subscription has **Defender CSPM (CloudPosture)** set to Free, it receives only the default Microsoft Cloud Security Benchmark. It will not be assessed against additional regulatory standards (PCI, ISO, SOC, etc.). The table below shows subscriptions that have zero Standard-tier plans enabled — the largest governance blind spots."
+              "json": "---\n### No Standard plans or unknown pricing: compliance context\n\nThis table uses the same subscription classification as the Executive Summary. It does not infer CSPM entitlement or standard availability from other Defender plans.\n\nCompliance columns show only what Resource Graph returned. **No standards data** is not a verified count of zero assigned standards, and missing failed-control counts are not zero failures. Review the plan status, pricing-data status, and compliance-data status separately."
             },
             "name": "rc-governance-gap-header"
           },
@@ -2087,10 +2370,10 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| extend tier = tostring(properties.pricingTier)\n| summarize StandardPlans = countif(tier == \"Standard\"),\n            TotalPlansEvaluated = count() by subscriptionId\n| where StandardPlans == 0\n| join kind=leftouter (\n    securityresources\n    | where type =~ \"microsoft.security/regulatorycompliancestandards\"\n    | extend failedControls = toint(properties.failedControls)\n    | summarize Standards = dcount(name), TotalFailedControls = sum(failedControls) by subscriptionId\n) on subscriptionId\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, TotalPlansEvaluated, StandardPlans, ComplianceStandards = coalesce(Standards, 0), TotalFailedControls = coalesce(TotalFailedControls, 0)\n| order by Subscription asc",
+              "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subId = tolower(subscriptionId), Subscription = name\n| summarize arg_min(Subscription, *) by subId\n| join kind=leftouter (\n    securityresources\n    | where type in~ (\"microsoft.security/pricings\", \"microsoft.security/regulatorycompliancestandards\")\n    | extend subId = tolower(subscriptionId), recordName = tolower(name),\n             recordKind = iff(type =~ \"microsoft.security/pricings\", \"Pricing\", \"Compliance\"),\n             pricingTier = tostring(properties.pricingTier), failedControls = tolong(properties.failedControls)\n    | where recordKind == \"Compliance\" or tolower(id) == strcat(\"/subscriptions/\", subId, \"/providers/microsoft.security/pricings/\", recordName)\n    | extend tierRank = case(pricingTier =~ \"Standard\", 2, pricingTier =~ \"Free\", 1, 0)\n    | summarize arg_max(tierRank, *) by subId, recordKind, recordName\n    | summarize StandardPlans = countif(recordKind == \"Pricing\" and pricingTier =~ \"Standard\"),\n                FreePlans = countif(recordKind == \"Pricing\" and pricingTier =~ \"Free\"),\n                UnknownPlans = countif(recordKind == \"Pricing\" and pricingTier !in~ (\"Standard\", \"Free\")),\n                TotalPlansEvaluated = countif(recordKind == \"Pricing\"),\n                Standards = countif(recordKind == \"Compliance\"),\n                TotalFailedControls = sumif(failedControls, recordKind == \"Compliance\"),\n                MissingFailedCounts = countif(recordKind == \"Compliance\" and isnull(failedControls)) by subId\n) on subId\n| extend TotalPlansEvaluated = coalesce(TotalPlansEvaluated, tolong(0)),\n         StandardPlans = coalesce(StandardPlans, tolong(0)),\n         FreePlans = coalesce(FreePlans, tolong(0)),\n         UnknownPlans = coalesce(UnknownPlans, tolong(0))\n| extend PricingDataStatus = case(TotalPlansEvaluated == 0, \"No pricing data\",\n                                 UnknownPlans > 0, \"Unknown pricing tier\", \"Available\")\n| extend PlanStatus = case(StandardPlans > 0, \"One or more plans on\",\n                          PricingDataStatus != \"Available\", \"Unknown\", \"No Standard plans\")\n| where PlanStatus in (\"No Standard plans\", \"Unknown\") or PricingDataStatus != \"Available\"\n| extend ComplianceDataStatus = iff(Standards > 0, \"Available\", \"No standards data\"),\n         ComplianceStandards = iff(Standards > 0, Standards, long(null)),\n         TotalFailedControls = iff(Standards > 0 and MissingFailedCounts == 0, TotalFailedControls, long(null))\n| project Subscription, PlanStatus, PricingDataStatus, TotalPlansEvaluated, StandardPlans,\n          ComplianceStandards, ComplianceDataStatus, TotalFailedControls\n| order by Subscription asc",
               "size": 0,
               "showExportToExcel": true,
-              "title": "Subscriptions with no Defender plans (governance blind spots)",
+              "title": "No Standard plans or unknown pricing - with available compliance data",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
               "crossComponentResources": [
@@ -2118,7 +2401,7 @@
                   },
                   {
                     "columnId": "ComplianceStandards",
-                    "label": "Compliance Standards Assigned"
+                    "label": "Standards observed in ARG"
                   },
                   {
                     "columnId": "TotalFailedControls",
