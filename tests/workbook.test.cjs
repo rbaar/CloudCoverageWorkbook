@@ -139,8 +139,16 @@ test('extension views preserve empty arrays, use exact keys, and render Unknown 
 });
 
 test('compliance distinguishes unavailable counts and unevaluated percentages', () => {
-  assert(query('rc-standards-grid').includes('"N/A - no evaluated controls"'));
-  assert(query('rc-standards-grid').includes('ComplianceStatus'));
+  const complianceGrid = items.get('rc-standards-grid').content;
+  assert(complianceGrid.query.includes('"N/A - no evaluated controls"'));
+  assert(complianceGrid.query.includes('ComplianceResult = state'));
+  assert(complianceGrid.query.includes('DataStatus = ComplianceStatus'));
+  assert.deepEqual(complianceGrid.gridSettings.labelSettings.slice(0, 2), [
+    { columnId: 'ComplianceResult', label: 'Compliance result' },
+    { columnId: 'DataStatus', label: 'Data status' },
+  ]);
+  assert(complianceGrid.gridSettings.formatters.some(formatter => formatter.columnMatch === 'ComplianceResult'));
+  assert(!complianceGrid.gridSettings.formatters.some(formatter => formatter.columnMatch === 'DataStatus'));
   assert(query('rc-chart').includes('| where isnotnull(pct)'));
   assert(query('rc-governance-gap-grid').includes('"No standards data"'));
   assert(query('rc-governance-gap-grid').includes('MissingFailedCounts == 0'));

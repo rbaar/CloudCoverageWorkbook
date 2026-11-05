@@ -2239,7 +2239,7 @@
           {
             "type": 1,
             "content": {
-              "json": "## Regulatory Compliance\n\nThis tab shows standards and control results returned by Defender for Cloud in Resource Graph. It is not a compliance certification.\n\n- **Compliance %** = passed / (passed + failed) controls; skipped controls are excluded.\n- Missing counts are **Unknown**. No evaluated controls is **N/A**, not -1% or 0%.\n- The chart omits unknown/N/A percentages; the table retains them with a status.\n- Subscriptions without standards data are not automatically compliant; the governance-context table calls out missing data for subscriptions with no Standard plans or unknown pricing.\n\nTo manage standards, use **Defender for Cloud > Regulatory Compliance > Manage compliance policies**."
+              "json": "## Regulatory Compliance\n\nThis tab shows standards and control results returned by Defender for Cloud in Resource Graph. It is not a compliance certification.\n\n- **Compliance result** is Defender for Cloud's outcome for the standard. **Failed** means one or more controls failed; check the Failed column for the count. It is a compliance finding, not a workbook or deployment error.\n- **Data status** describes whether usable control data was returned. **Available** means results were received; it does not mean the standard passed.\n- **Compliance %** = passed / (passed + failed) controls; skipped controls are excluded.\n- Missing counts are **Unknown**. No evaluated controls is **N/A**, not -1% or 0%.\n- The chart omits unknown/N/A percentages; the table retains them with a data status.\n- Subscriptions without standards data are not automatically compliant; the governance-context table calls out missing data for subscriptions with no Standard plans or unknown pricing.\n\nTo manage standards, use **Defender for Cloud > Regulatory Compliance > Manage compliance policies**."
             },
             "name": "rc-intro"
           },
@@ -2247,7 +2247,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ \"microsoft.security/regulatorycompliancestandards\"\n| extend passedControls = toint(properties.passedControls),\n         failedControls = toint(properties.failedControls),\n         skippedControls = toint(properties.skippedControls),\n         standardName = tostring(name), state = tostring(properties.state)\n| extend totalControls = passedControls + failedControls\n| extend pct = iff(totalControls > 0, round(todouble(passedControls) / todouble(totalControls) * 100, 0), real(null))\n| extend ComplianceStatus = case(isnull(totalControls), \"Unknown\", totalControls == 0, \"N/A - no evaluated controls\", \"Available\")\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, Standard = standardName, State = state, Passed = passedControls,\n          Failed = failedControls, Skipped = skippedControls, CompliancePct = pct, ComplianceStatus\n| order by CompliancePct asc nulls first",
+              "query": "securityresources\n| where type =~ \"microsoft.security/regulatorycompliancestandards\"\n| extend passedControls = toint(properties.passedControls),\n         failedControls = toint(properties.failedControls),\n         skippedControls = toint(properties.skippedControls),\n         standardName = tostring(name), state = tostring(properties.state)\n| extend totalControls = passedControls + failedControls\n| extend pct = iff(totalControls > 0, round(todouble(passedControls) / todouble(totalControls) * 100, 0), real(null))\n| extend ComplianceStatus = case(isnull(totalControls), \"Unknown\", totalControls == 0, \"N/A - no evaluated controls\", \"Available\")\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| extend Subscription = coalesce(subscriptionName, subscriptionId)\n| project Subscription, Standard = standardName, ComplianceResult = state, Passed = passedControls,\n          Failed = failedControls, Skipped = skippedControls, CompliancePct = pct, DataStatus = ComplianceStatus\n| order by CompliancePct asc nulls first",
               "size": 0,
               "showAnalytics": true,
               "showExportToExcel": true,
@@ -2260,7 +2260,7 @@
               "gridSettings": {
                 "formatters": [
                   {
-                    "columnMatch": "State",
+                    "columnMatch": "ComplianceResult",
                     "formatter": 18,
                     "formatOptions": {
                       "thresholdsOptions": "icons",
@@ -2318,6 +2318,14 @@
                 ],
                 "filter": true,
                 "labelSettings": [
+                  {
+                    "columnId": "ComplianceResult",
+                    "label": "Compliance result"
+                  },
+                  {
+                    "columnId": "DataStatus",
+                    "label": "Data status"
+                  },
                   {
                     "columnId": "CompliancePct",
                     "label": "Compliance %"

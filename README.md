@@ -17,7 +17,7 @@ The workbook reports **subscription-plan enablement**, not verified resource-lev
 | **Protection Gaps** | Inventory under enabled, disabled, or unknown subscription plans, using identical summary-table, chart, and subscription-detail populations. SQL servers/managed instances, registered SQL VM resources, and open-source databases are separate workloads. **CSPM and Resource Manager count subscriptions**; other rows count resources. Stopped VMs are a subset, not an additional chart series. |
 | **Plan Status per Subscription** | Fixed 14-column plan catalogue with On/Off/Unknown and sub-plan details. Includes subscriptions without pricing data and legacy DNS for visibility; all 14 plans on is not a recommendation or a measure of applicable workload coverage. |
 | **Extensions & Features** | Exact, case-insensitive extension-key matching with On/Off/Unknown states. Subscriptions with missing plan records or empty extension arrays remain visible. |
-| **Regulatory Compliance** | Available control results by standard and subscription, with Unknown/N/A for missing or unevaluated percentages. Governance context uses the same no-Standard/unknown-pricing classification as the Executive Summary; missing standards or failed-control counts are not zero. |
+| **Regulatory Compliance** | Clearly separated **Compliance result** (for example, Failed) and **Data status** (for example, Available) columns, control counts, and compliance percentages. Governance context uses the same no-Standard/unknown-pricing classification as the Executive Summary; missing standards or failed-control counts are not zero. |
 
 ---
 
